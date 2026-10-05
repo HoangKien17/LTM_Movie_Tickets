@@ -1,11 +1,5 @@
 package server;
 
-import model.NguoiDung;
-import model.Phim;
-import protocol.Protocol;
-import service.BasicService;
-import service.CinemaService;
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -17,6 +11,9 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -24,9 +21,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import model.NguoiDung;
+import model.Phim;
+import protocol.Protocol;
+import service.BasicService;
+import service.CinemaService;
 
-/** TCP Server: giữ phiên đăng nhập và chuyển yêu cầu đến Service. */
+/**
+ * TCP Server: giữ phiên đăng nhập và chuyển yêu cầu đến Service.
+ */
 public final class BasicServer {
+
     private static final int PORT = 2040;
     private final BasicService basic = new BasicService();
     private final CinemaService cinema = new CinemaService();
@@ -63,11 +68,9 @@ public final class BasicServer {
 
     private void handleClient(Socket socket) {
         Session session = new Session();
-        try (Socket client = socket;
-             BufferedReader input = new BufferedReader(new InputStreamReader(
-                     client.getInputStream(), StandardCharsets.UTF_8));
-             BufferedWriter output = new BufferedWriter(new OutputStreamWriter(
-                     client.getOutputStream(), StandardCharsets.UTF_8))) {
+        try (Socket client = socket; BufferedReader input = new BufferedReader(new InputStreamReader(
+                client.getInputStream(), StandardCharsets.UTF_8)); BufferedWriter output = new BufferedWriter(new OutputStreamWriter(
+                client.getOutputStream(), StandardCharsets.UTF_8))) {
             String request;
             while ((request = input.readLine()) != null) {
                 List<String> response = process(request, session);
@@ -96,7 +99,9 @@ public final class BasicServer {
                 case "LOGIN":
                     count(p, 3);
                     NguoiDung user = basic.login(dec(p[1]), dec(p[2]));
-                    if (user == null) return error("Sai tài khoản hoặc mật khẩu");
+                    if (user == null) {
+                        return error("Sai tài khoản hoặc mật khẩu");
+                    }
                     session.user = user;
                     return one("OK;LOGIN;" + user.getId() + ";" + enc(user.getHoTen())
                             + ";" + enc(user.getGmail()) + ";" + enc(user.getVaiTro()));
@@ -209,7 +214,7 @@ public final class BasicServer {
                     count(p, 5);
                     admin(session);
                     return one("OK;ADDED;" + cinema.addShow(number(p[1]), number(p[2]),
-                            LocalDateTime.parse(p[3]), new BigDecimal(p[4])));
+                            showTime(p[3]), new BigDecimal(p[4])));
                 case "ADMIN_DELETE_SHOW":
                     count(p, 2);
                     admin(session);
@@ -219,7 +224,7 @@ public final class BasicServer {
                     count(p, 6);
                     admin(session);
                     cinema.updateShow(number(p[1]), number(p[2]), number(p[3]),
-                            LocalDateTime.parse(p[4]), new BigDecimal(p[5]));
+                            showTime(p[4]), new BigDecimal(p[5]));
                     return one("OK;UPDATED");
                 default:
                     return error("Lệnh không được hỗ trợ");
@@ -240,18 +245,24 @@ public final class BasicServer {
         lines.add("OK;" + kind + ";" + data.size());
         for (String[] row : data) {
             StringBuilder line = new StringBuilder(tag);
-            for (String value : row) line.append(';').append(enc(empty(value)));
+            for (String value : row) {
+                line.append(';').append(enc(empty(value)));
+            }
             lines.add(line.toString());
         }
         return lines;
     }
 
     private static void count(String[] p, int expected) {
-        if (p.length != expected) throw new IllegalArgumentException("Số tham số không hợp lệ");
+        if (p.length != expected) {
+            throw new IllegalArgumentException("Số tham số không hợp lệ");
+        }
     }
 
     private static void signedIn(Session session) {
-        if (session.user == null) throw new IllegalArgumentException("Bạn cần đăng nhập");
+        if (session.user == null) {
+            throw new IllegalArgumentException("Bạn cần đăng nhập");
+        }
     }
 
     private static void admin(Session session) {
@@ -267,6 +278,22 @@ public final class BasicServer {
 
     private static long longNumber(String text) {
         return Long.parseLong(text);
+    }
+
+    private static LocalDateTime showTime(String text) {
+        String value = text.trim();
+        try {
+            if (value.indexOf('/') >= 0) {
+                DateTimeFormatter vietnamese = DateTimeFormatter
+                        .ofPattern("dd/MM/uuuu HH:mm")
+                        .withResolverStyle(ResolverStyle.STRICT);
+                return LocalDateTime.parse(value, vietnamese);
+            }
+            return LocalDateTime.parse(value.replace(' ', 'T'));
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("Thời gian không hợp lệ. Ví dụ: "
+                    + "2026-10-06T19:30, 2026-10-06 19:30 hoặc 06/10/2026 19:30");
+        }
     }
 
     private static String enc(String value) {
@@ -290,6 +317,7 @@ public final class BasicServer {
     }
 
     private static final class Session {
+
         private NguoiDung user;
     }
 }
