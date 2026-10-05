@@ -11,12 +11,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** Kiểm tra quy tắc nghiệp vụ trước khi gọi repository. */
+/**
+ * Kiểm tra quy tắc nghiệp vụ trước khi gọi repository.
+ */
 public final class CinemaService {
+
     private final CinemaRepository repository = new CinemaRepository();
 
     public List<String[]> shows(int movieId) throws SQLException {
-        if (movieId < 0) throw new IllegalArgumentException("Mã phim không hợp lệ");
+        if (movieId < 0) {
+            throw new IllegalArgumentException("Mã phim không hợp lệ");
+        }
         return repository.shows(movieId);
     }
 
@@ -31,7 +36,9 @@ public final class CinemaService {
             throw new IllegalArgumentException("Hãy chọn ít nhất một ghế");
         }
         String[] parts = csv.split(",", -1);
-        if (parts.length > 10) throw new IllegalArgumentException("Mỗi lần đặt tối đa 10 ghế");
+        if (parts.length > 10) {
+            throw new IllegalArgumentException("Mỗi lần đặt tối đa 10 ghế");
+        }
         List<String> codes = new ArrayList<>();
         Set<String> unique = new HashSet<>();
         for (String raw : parts) {
@@ -53,12 +60,16 @@ public final class CinemaService {
     }
 
     public void cancel(int userId, long bookingId) throws SQLException {
-        if (bookingId < 1) throw new IllegalArgumentException("Mã đơn không hợp lệ");
+        if (bookingId < 1) {
+            throw new IllegalArgumentException("Mã đơn không hợp lệ");
+        }
         repository.cancel(userId, bookingId, false);
     }
 
     public void adminCancel(long bookingId) throws SQLException {
-        if (bookingId < 1) throw new IllegalArgumentException("Mã đơn không hợp lệ");
+        if (bookingId < 1) {
+            throw new IllegalArgumentException("Mã đơn không hợp lệ");
+        }
         repository.cancel(0, bookingId, true);
     }
 
@@ -100,11 +111,25 @@ public final class CinemaService {
     }
 
     public void updateRoom(int id, String name) throws SQLException {
+        updateRoom(id, name, null, null);
+    }
+
+    public void updateRoom(int id, String name, Integer rows, Integer columns) throws SQLException {
         requirePositive(id, "Mã phòng");
-        if (name == null || name.trim().isEmpty() || name.length() > 100) {
-            throw new IllegalArgumentException("Tên phòng phải có từ 1 đến 100 ký tự");
+        String newName = name == null ? "" : name.trim();
+        if (newName.length() > 100) {
+            throw new IllegalArgumentException("Tên phòng tối đa 100 ký tự");
         }
-        repository.updateRoom(id, name.trim());
+        if ((rows == null) != (columns == null)) {
+            throw new IllegalArgumentException("Hãy nhập cả số hàng và số ghế mỗi hàng");
+        }
+        if (rows != null && (rows < 1 || rows > 26 || columns < 1 || columns > 99)) {
+            throw new IllegalArgumentException("Số hàng 1–26, số ghế mỗi hàng 1–99");
+        }
+        if (newName.isEmpty() && rows == null) {
+            throw new IllegalArgumentException("Hãy nhập tên mới hoặc cấu hình ghế mới");
+        }
+        repository.updateRoom(id, newName, rows, columns);
     }
 
     public int addShow(int movieId, int roomId, LocalDateTime start, BigDecimal price)
@@ -127,7 +152,7 @@ public final class CinemaService {
     }
 
     public void updateShow(int id, int movieId, int roomId, LocalDateTime start,
-                           BigDecimal price) throws SQLException {
+            BigDecimal price) throws SQLException {
         requirePositive(id, "Mã suất chiếu");
         requirePositive(movieId, "Mã phim");
         requirePositive(roomId, "Mã phòng");
@@ -159,6 +184,8 @@ public final class CinemaService {
     }
 
     private static void requirePositive(int id, String label) {
-        if (id < 1) throw new IllegalArgumentException(label + " không hợp lệ");
+        if (id < 1) {
+            throw new IllegalArgumentException(label + " không hợp lệ");
+        }
     }
 }

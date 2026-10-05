@@ -629,7 +629,7 @@ public final class BasicClientUI extends JFrame {
         groups.add(adminGroup("Phòng chiếu", "Không gian và số ghế",
                 action("Danh sách", this::adminRooms, "subtle"),
                 action("Thêm", this::adminAddRoom, "secondary"),
-                action("Đổi tên", this::adminUpdateRoom, "subtle"),
+                action("Sửa phòng", this::adminUpdateRoom, "subtle"),
                 action("Xóa", () -> adminDelete("ADMIN_DELETE_ROOM", "Mã phòng", this::adminRooms), "danger")));
         groups.add(adminGroup("Suất chiếu", "Lịch và giá vé",
                 action("Danh sách", this::adminShows, "subtle"),
@@ -1257,15 +1257,28 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void adminUpdateRoom() {
-        String[] v = prompt("Đổi tên phòng", "Mã phòng", "Tên phòng mới");
+        String[] v = prompt("Sửa phòng", "Mã phòng",
+                "Tên mới (trống: giữ nguyên)",
+                "Số hàng mới (trống: giữ nguyên)",
+                "Ghế mỗi hàng mới (trống: giữ nguyên)");
         if (v == null) {
             return;
         }
-        send("ADMIN_UPDATE_ROOM;" + v[0] + ";" + enc(v[1]),
+        if (v[1].isEmpty() && v[2].isEmpty() && v[3].isEmpty()) {
+            showError("Hãy nhập tên mới hoặc số hàng và số ghế mỗi hàng");
+            return;
+        }
+        if (v[2].isEmpty() != v[3].isEmpty()) {
+            showError("Khi đổi số ghế, hãy nhập cả số hàng và số ghế mỗi hàng");
+            return;
+        }
+        send("ADMIN_UPDATE_ROOM;" + v[0] + ";" + enc(v[1])
+                + ";" + v[2] + ";" + v[3],
                 lines -> {
                     if (isOk(lines, "UPDATED")) {
                         showModel.setRowCount(0);
-                        info("Đã đổi tên phòng");
+                        clearSeats();
+                        info("Đã cập nhật phòng chiếu");
                         adminRooms();
                     }
                 });

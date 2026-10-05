@@ -1,7 +1,5 @@
 package repository;
 
-import mysql.CSDL;
-
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -11,10 +9,18 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import mysql.CSDL;
 
-/** Mọi truy vấn suất chiếu, ghế, vé và quản trị đều ở phía Server. */
+/**
+ * Mọi truy vấn suất chiếu, ghế, vé và quản trị đều ở phía Server.
+ */
 public final class CinemaRepository {
+
     public List<String[]> shows(int movieId) throws SQLException {
         String sql = "SELECT x.id, p.id, p.ten_phim, r.ten_phong, x.bat_dau, x.gia_ve "
                 + "FROM xuat_chieu x JOIN phim p ON p.id=x.phim_id "
@@ -27,8 +33,8 @@ public final class CinemaRepository {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     rows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3),
-                            rs.getString(4), rs.getTimestamp(5).toLocalDateTime().toString(),
-                            rs.getBigDecimal(6).toPlainString()});
+                        rs.getString(4), rs.getTimestamp(5).toLocalDateTime().toString(),
+                        rs.getBigDecimal(6).toPlainString()});
                 }
             }
         }
@@ -44,7 +50,9 @@ public final class CinemaRepository {
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, showId);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) rows.add(new String[]{rs.getString(1), rs.getString(2)});
+                while (rs.next()) {
+                    rows.add(new String[]{rs.getString(1), rs.getString(2)});
+                }
             }
         }
         return rows;
@@ -61,7 +69,9 @@ public final class CinemaRepository {
                         "SELECT phong_chieu_id, gia_ve, bat_dau FROM xuat_chieu WHERE id=? FOR UPDATE")) {
                     ps.setInt(1, showId);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) throw new IllegalArgumentException("Suất chiếu không tồn tại");
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Suất chiếu không tồn tại");
+                        }
                         roomId = rs.getInt(1);
                         price = rs.getBigDecimal(2);
                         start = rs.getTimestamp(3).toLocalDateTime();
@@ -77,7 +87,9 @@ public final class CinemaRepository {
                         ps.setInt(1, roomId);
                         ps.setString(2, code);
                         try (ResultSet rs = ps.executeQuery()) {
-                            if (!rs.next()) throw new IllegalArgumentException("Ghế " + code + " không thuộc phòng chiếu");
+                            if (!rs.next()) {
+                                throw new IllegalArgumentException("Ghế " + code + " không thuộc phòng chiếu");
+                            }
                             seatIds.add(rs.getInt(1));
                         }
                     }
@@ -91,7 +103,9 @@ public final class CinemaRepository {
                     ps.setBigDecimal(3, price.multiply(BigDecimal.valueOf(seatCodes.size())));
                     ps.executeUpdate();
                     try (ResultSet keys = ps.getGeneratedKeys()) {
-                        if (!keys.next()) throw new SQLException("Không nhận được mã đặt vé");
+                        if (!keys.next()) {
+                            throw new SQLException("Không nhận được mã đặt vé");
+                        }
                         bookingId = keys.getLong(1);
                     }
                 }
@@ -132,8 +146,8 @@ public final class CinemaRepository {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     rows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3),
-                            rs.getString(4), rs.getTimestamp(5).toLocalDateTime().toString(),
-                            rs.getBigDecimal(6).toPlainString(), rs.getString(7), rs.getString(8)});
+                        rs.getString(4), rs.getTimestamp(5).toLocalDateTime().toString(),
+                        rs.getBigDecimal(6).toPlainString(), rs.getString(7), rs.getString(8)});
                 }
             }
         }
@@ -200,7 +214,9 @@ public final class CinemaRepository {
             ps.setInt(3, minutes);
             ps.setString(4, description);
             ps.setInt(5, id);
-            if (ps.executeUpdate() == 0) throw new IllegalArgumentException("Phim không tồn tại");
+            if (ps.executeUpdate() == 0) {
+                throw new IllegalArgumentException("Phim không tồn tại");
+            }
         }
     }
 
@@ -208,9 +224,13 @@ public final class CinemaRepository {
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
                 "DELETE FROM phim WHERE id=?")) {
             ps.setInt(1, id);
-            if (ps.executeUpdate() == 0) throw new IllegalArgumentException("Phim không tồn tại");
+            if (ps.executeUpdate() == 0) {
+                throw new IllegalArgumentException("Phim không tồn tại");
+            }
         } catch (SQLException ex) {
-            if (ex.getErrorCode() == 1451) throw new IllegalArgumentException("Phim đang có suất chiếu");
+            if (ex.getErrorCode() == 1451) {
+                throw new IllegalArgumentException("Phim đang có suất chiếu");
+            }
             throw ex;
         }
     }
@@ -219,9 +239,10 @@ public final class CinemaRepository {
         List<String[]> rows = new ArrayList<>();
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
                 "SELECT r.id,r.ten_phong,COUNT(g.id) FROM phong_chieu r "
-                + "LEFT JOIN ghe g ON g.phong_chieu_id=r.id GROUP BY r.id,r.ten_phong ORDER BY r.id");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) rows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3)});
+                + "LEFT JOIN ghe g ON g.phong_chieu_id=r.id GROUP BY r.id,r.ten_phong ORDER BY r.id"); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                rows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3)});
+            }
         }
         return rows;
     }
@@ -260,15 +281,94 @@ public final class CinemaRepository {
         }
     }
 
-    public void updateRoom(int id, String name) throws SQLException {
-        try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "UPDATE phong_chieu SET ten_phong=? WHERE id=?")) {
-            ps.setString(1, name);
-            ps.setInt(2, id);
-            if (ps.executeUpdate() == 0) throw new IllegalArgumentException("Phòng không tồn tại");
-        } catch (SQLException ex) {
-            if (ex.getErrorCode() == 1062) throw new IllegalArgumentException("Tên phòng đã tồn tại");
-            throw ex;
+    public void updateRoom(int id, String name, Integer rows, Integer columns) throws SQLException {
+        try (Connection c = CSDL.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                String currentName;
+                try (PreparedStatement ps = c.prepareStatement(
+                        "SELECT ten_phong FROM phong_chieu WHERE id=? FOR UPDATE")) {
+                    ps.setInt(1, id);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Phòng không tồn tại");
+                        }
+                        currentName = rs.getString(1);
+                    }
+                }
+                if (!name.isEmpty() && !name.equals(currentName)) {
+                    try (PreparedStatement ps = c.prepareStatement(
+                            "UPDATE phong_chieu SET ten_phong=? WHERE id=?")) {
+                        ps.setString(1, name);
+                        ps.setInt(2, id);
+                        ps.executeUpdate();
+                    }
+                }
+                if (rows != null) {
+                    // Đồng bộ với thao tác đặt vé, vốn khóa suất chiếu trước khi ghi vé.
+                    try (PreparedStatement ps = c.prepareStatement(
+                            "SELECT id FROM xuat_chieu WHERE phong_chieu_id=? FOR UPDATE")) {
+                        ps.setInt(1, id);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                /* Giữ khóa đến khi giao dịch hoàn tất. */ }
+                        }
+                    }
+                    Map<String, Integer> existing = new LinkedHashMap<>();
+                    try (PreparedStatement ps = c.prepareStatement(
+                            "SELECT id,ma_ghe FROM ghe WHERE phong_chieu_id=? FOR UPDATE")) {
+                        ps.setInt(1, id);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                existing.put(rs.getString(2), rs.getInt(1));
+                            }
+                        }
+                    }
+                    Set<String> desired = new LinkedHashSet<>();
+                    for (int row = 0; row < rows; row++) {
+                        for (int col = 1; col <= columns; col++) {
+                            desired.add(Character.toString((char) ('A' + row)) + col);
+                        }
+                    }
+                    try (PreparedStatement ps = c.prepareStatement("DELETE FROM ghe WHERE id=?")) {
+                        for (Map.Entry<String, Integer> seat : existing.entrySet()) {
+                            if (!desired.contains(seat.getKey())) {
+                                ps.setInt(1, seat.getValue());
+                                ps.executeUpdate();
+                            }
+                        }
+                    }
+                    try (PreparedStatement ps = c.prepareStatement(
+                            "INSERT INTO ghe (phong_chieu_id,ma_ghe) VALUES (?,?)")) {
+                        boolean hasNewSeats = false;
+                        for (String code : desired) {
+                            if (!existing.containsKey(code)) {
+                                ps.setInt(1, id);
+                                ps.setString(2, code);
+                                ps.addBatch();
+                                hasNewSeats = true;
+                            }
+                        }
+                        if (hasNewSeats) {
+                            ps.executeBatch();
+                        }
+                    }
+                }
+                c.commit();
+            } catch (SQLException | RuntimeException ex) {
+                c.rollback();
+                if (ex instanceof SQLException) {
+                    int code = ((SQLException) ex).getErrorCode();
+                    if (code == 1062) {
+                        throw new IllegalArgumentException("Tên phòng đã tồn tại");
+                    }
+                    if (code == 1451) {
+                        throw new IllegalArgumentException(
+                                "Không thể bỏ ghế đã từng được đặt vé; hãy giữ nguyên ghế đó");
+                    }
+                }
+                throw ex;
+            }
         }
     }
 
@@ -284,7 +384,9 @@ public final class CinemaRepository {
                 try (PreparedStatement ps = c.prepareStatement(
                         "DELETE FROM phong_chieu WHERE id=?")) {
                     ps.setInt(1, id);
-                    if (ps.executeUpdate() == 0) throw new IllegalArgumentException("Phòng không tồn tại");
+                    if (ps.executeUpdate() == 0) {
+                        throw new IllegalArgumentException("Phòng không tồn tại");
+                    }
                 }
                 c.commit();
             } catch (SQLException | RuntimeException ex) {
@@ -307,7 +409,9 @@ public final class CinemaRepository {
                         "SELECT thoi_luong FROM phim WHERE id=?")) {
                     ps.setInt(1, movieId);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) throw new IllegalArgumentException("Phim không tồn tại");
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Phim không tồn tại");
+                        }
                         minutes = rs.getInt(1);
                     }
                 }
@@ -315,7 +419,9 @@ public final class CinemaRepository {
                         "SELECT id FROM phong_chieu WHERE id=? FOR UPDATE")) {
                     ps.setInt(1, roomId);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) throw new IllegalArgumentException("Phòng không tồn tại");
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Phòng không tồn tại");
+                        }
                     }
                 }
                 checkOverlap(c, roomId, start, minutes, 0);
@@ -340,7 +446,7 @@ public final class CinemaRepository {
     }
 
     public void updateShow(int id, int movieId, int roomId, LocalDateTime start,
-                           BigDecimal price) throws SQLException {
+            BigDecimal price) throws SQLException {
         try (Connection c = CSDL.getConnection()) {
             c.setAutoCommit(false);
             try {
@@ -348,14 +454,18 @@ public final class CinemaRepository {
                         "SELECT id FROM xuat_chieu WHERE id=? FOR UPDATE")) {
                     ps.setInt(1, id);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) throw new IllegalArgumentException("Suất chiếu không tồn tại");
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Suất chiếu không tồn tại");
+                        }
                     }
                 }
                 try (PreparedStatement ps = c.prepareStatement(
                         "SELECT id FROM don_dat_ve WHERE xuat_chieu_id=? LIMIT 1")) {
                     ps.setInt(1, id);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) throw new IllegalArgumentException("Suất chiếu đã có vé");
+                        if (rs.next()) {
+                            throw new IllegalArgumentException("Suất chiếu đã có vé");
+                        }
                     }
                 }
                 int minutes;
@@ -363,7 +473,9 @@ public final class CinemaRepository {
                         "SELECT thoi_luong FROM phim WHERE id=?")) {
                     ps.setInt(1, movieId);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) throw new IllegalArgumentException("Phim không tồn tại");
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Phim không tồn tại");
+                        }
                         minutes = rs.getInt(1);
                     }
                 }
@@ -371,7 +483,9 @@ public final class CinemaRepository {
                         "SELECT id FROM phong_chieu WHERE id=? FOR UPDATE")) {
                     ps.setInt(1, roomId);
                     try (ResultSet rs = ps.executeQuery()) {
-                        if (!rs.next()) throw new IllegalArgumentException("Phòng không tồn tại");
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Phòng không tồn tại");
+                        }
                     }
                 }
                 checkOverlap(c, roomId, start, minutes, id);
@@ -393,7 +507,7 @@ public final class CinemaRepository {
     }
 
     private static void checkOverlap(Connection c, int roomId, LocalDateTime start,
-                                     int minutes, int excludeId) throws SQLException {
+            int minutes, int excludeId) throws SQLException {
         String sql = "SELECT x.bat_dau,p.thoi_luong FROM xuat_chieu x "
                 + "JOIN phim p ON p.id=x.phim_id WHERE x.phong_chieu_id=? AND x.id<>? FOR UPDATE";
         try (PreparedStatement ps = c.prepareStatement(sql)) {
@@ -416,9 +530,13 @@ public final class CinemaRepository {
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
                 "DELETE FROM xuat_chieu WHERE id=?")) {
             ps.setInt(1, id);
-            if (ps.executeUpdate() == 0) throw new IllegalArgumentException("Suất chiếu không tồn tại");
+            if (ps.executeUpdate() == 0) {
+                throw new IllegalArgumentException("Suất chiếu không tồn tại");
+            }
         } catch (SQLException ex) {
-            if (ex.getErrorCode() == 1451) throw new IllegalArgumentException("Suất chiếu đã có vé");
+            if (ex.getErrorCode() == 1451) {
+                throw new IllegalArgumentException("Suất chiếu đã có vé");
+            }
             throw ex;
         }
     }
@@ -426,11 +544,10 @@ public final class CinemaRepository {
     public List<String[]> users() throws SQLException {
         List<String[]> rows = new ArrayList<>();
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "SELECT id,ho_ten,gmail,so_dien_thoai,vai_tro FROM nguoi_dung ORDER BY id");
-             ResultSet rs = ps.executeQuery()) {
+                "SELECT id,ho_ten,gmail,so_dien_thoai,vai_tro FROM nguoi_dung ORDER BY id"); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 rows.add(new String[]{rs.getString(1), rs.getString(2), rs.getString(3),
-                        rs.getString(4), rs.getString(5)});
+                    rs.getString(4), rs.getString(5)});
             }
         }
         return rows;
@@ -439,8 +556,7 @@ public final class CinemaRepository {
     public String[] stats() throws SQLException {
         String sql = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN trang_thai='active' "
                 + "THEN tong_tien ELSE 0 END),0) FROM don_dat_ve";
-        try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+        try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             rs.next();
             return new String[]{rs.getString(1), rs.getBigDecimal(2).toPlainString()};
         }
@@ -448,7 +564,9 @@ public final class CinemaRepository {
 
     private static int generatedId(PreparedStatement ps) throws SQLException {
         try (ResultSet keys = ps.getGeneratedKeys()) {
-            if (!keys.next()) throw new SQLException("Không nhận được mã mới");
+            if (!keys.next()) {
+                throw new SQLException("Không nhận được mã mới");
+            }
             return keys.getInt(1);
         }
     }

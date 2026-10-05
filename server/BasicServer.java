@@ -206,9 +206,16 @@ public final class BasicServer {
                     cinema.deleteRoom(number(p[1]));
                     return one("OK;DELETED");
                 case "ADMIN_UPDATE_ROOM":
-                    count(p, 3);
+                    if (p.length != 3 && p.length != 5) {
+                        throw new IllegalArgumentException("Số tham số không hợp lệ");
+                    }
                     admin(session);
-                    cinema.updateRoom(number(p[1]), dec(p[2]));
+                    if (p.length == 3) {
+                        cinema.updateRoom(number(p[1]), dec(p[2]));
+                    } else {
+                        cinema.updateRoom(number(p[1]), dec(p[2]),
+                                optionalNumber(p[3]), optionalNumber(p[4]));
+                    }
                     return one("OK;UPDATED");
                 case "ADMIN_ADD_SHOW":
                     count(p, 5);
@@ -278,6 +285,10 @@ public final class BasicServer {
 
     private static long longNumber(String text) {
         return Long.parseLong(text);
+    }
+
+    private static Integer optionalNumber(String text) {
+        return text.isEmpty() ? null : number(text);
     }
 
     private static LocalDateTime showTime(String text) {
