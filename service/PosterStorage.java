@@ -18,8 +18,11 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 
-/** Lưu poster trên máy Server và tạo ảnh nhỏ để gửi cho các Client qua TCP. */
+/**
+ * Lưu poster trên máy Server và tạo ảnh nhỏ để gửi cho các Client qua TCP.
+ */
 public final class PosterStorage {
+
     public static final int MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
     private static final int WIDTH = 244;
     private static final int HEIGHT = 340;
@@ -90,6 +93,9 @@ public final class PosterStorage {
         }
         try {
             Path file = directory().resolve(filename);
+            if (!Files.isRegularFile(file)) {
+                file = legacyDirectory().resolve(filename);
+            }
             if (!Files.isRegularFile(file) || Files.size(file) > 300_000) {
                 return "";
             }
@@ -105,8 +111,17 @@ public final class PosterStorage {
         if (!isManaged(filename)) {
             return;
         }
+        Path current = directory();
+        deleteFrom(current, filename);
+        Path legacy = legacyDirectory();
+        if (!current.equals(legacy)) {
+            deleteFrom(legacy, filename);
+        }
+    }
+
+    private static void deleteFrom(Path directory, String filename) {
         try {
-            Files.deleteIfExists(directory().resolve(filename));
+            Files.deleteIfExists(directory.resolve(filename));
         } catch (IOException ex) {
             System.err.println("Không xóa được poster cũ " + filename + ": " + ex.getMessage());
         }
@@ -152,6 +167,10 @@ public final class PosterStorage {
         if (configured != null && !configured.trim().isEmpty()) {
             return Path.of(configured.trim()).toAbsolutePath().normalize();
         }
+        return Path.of("img").toAbsolutePath().normalize();
+    }
+
+    private static Path legacyDirectory() {
         return Path.of(System.getProperty("user.home"), ".ltm-movie-tickets", "posters")
                 .toAbsolutePath().normalize();
     }
