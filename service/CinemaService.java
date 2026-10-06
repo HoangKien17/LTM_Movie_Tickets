@@ -1,7 +1,5 @@
 package service;
 
-import repository.CinemaRepository;
-
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -10,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import repository.CinemaRepository;
 
 /**
  * Kiểm tra quy tắc nghiệp vụ trước khi gọi repository.
@@ -91,23 +90,35 @@ public final class CinemaService {
         }
     }
 
-    public void updateMovie(int id, String title, String genre, int minutes, String description)
+    public void updateMovie(int id, String title, String genre, Integer minutes, String description)
             throws SQLException {
         updateMovie(id, title, genre, minutes, description, "");
     }
 
-    public void updateMovie(int id, String title, String genre, int minutes,
+    public void updateMovie(int id, String title, String genre, Integer minutes,
             String description, String posterData) throws SQLException {
         requirePositive(id, "Mã phim");
-        validateMovie(title, genre, minutes, description);
+        String newTitle = optionalMovieText(title);
+        String newGenre = optionalMovieText(genre);
+        String newDescription = optionalMovieText(description);
+        if ((newTitle != null && newTitle.length() > 200)
+                || (newGenre != null && newGenre.length() > 100)
+                || (newDescription != null && newDescription.length() > 10000)
+                || (minutes != null && (minutes < 1 || minutes > 1000))) {
+            throw new IllegalArgumentException("Thông tin phim không hợp lệ");
+        }
+        if (newTitle == null && newGenre == null && minutes == null
+                && newDescription == null && (posterData == null || posterData.isEmpty())) {
+            throw new IllegalArgumentException("Hãy nhập thông tin mới hoặc chọn ảnh mới");
+        }
         if (posterData == null || posterData.isEmpty()) {
-            repository.updateMovie(id, title.trim(), genre.trim(), minutes, description.trim());
+            repository.updateMovie(id, newTitle, newGenre, minutes, newDescription);
             return;
         }
         String filename = PosterStorage.save(posterData);
         try {
-            String oldFilename = repository.updateMovieWithPoster(id, title.trim(),
-                    genre.trim(), minutes, description.trim(), filename);
+            String oldFilename = repository.updateMovieWithPoster(id, newTitle,
+                    newGenre, minutes, newDescription, filename);
             PosterStorage.delete(oldFilename);
         } catch (SQLException | RuntimeException ex) {
             PosterStorage.delete(filename);
@@ -214,6 +225,10 @@ public final class CinemaService {
                 || minutes < 1 || minutes > 1000) {
             throw new IllegalArgumentException("Thông tin phim không hợp lệ");
         }
+    }
+
+    private static String optionalMovieText(String value) {
+        return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
     private static void requirePositive(int id, String label) {

@@ -1257,8 +1257,11 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void adminUpdateMovie() {
-        MovieForm form = promptMovie("Sửa phim", "Mã phim", "Tên phim mới",
-                "Thể loại", "Thời lượng (phút)", "Mô tả");
+        MovieForm form = promptMovie("Sửa phim", "Mã phim (bắt buộc)",
+                "Tên phim mới (trống: giữ nguyên)",
+                "Thể loại (trống: giữ nguyên)",
+                "Thời lượng phút (trống: giữ nguyên)",
+                "Mô tả (trống: giữ nguyên)");
         if (form == null) {
             return;
         }

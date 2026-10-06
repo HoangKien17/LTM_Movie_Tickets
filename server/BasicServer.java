@@ -199,7 +199,7 @@ public final class BasicServer {
                     }
                     admin(session);
                     cinema.updateMovie(number(p[1]), dec(p[2]), dec(p[3]),
-                            number(p[4]), dec(p[5]), p.length == 7 ? p[6] : "");
+                            optionalNumber(p[4]), dec(p[5]), p.length == 7 ? p[6] : "");
                     return one("OK;UPDATED");
                 case "ADMIN_DELETE_MOVIE":
                     count(p, 2);

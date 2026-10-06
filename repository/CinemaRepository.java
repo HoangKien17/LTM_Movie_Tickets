@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -211,22 +212,22 @@ public final class CinemaRepository {
         }
     }
 
-    public void updateMovie(int id, String title, String genre, int minutes, String description)
+    public void updateMovie(int id, String title, String genre, Integer minutes, String description)
             throws SQLException {
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "UPDATE phim SET ten_phim=?,the_loai=?,thoi_luong=?,mo_ta=? WHERE id=?")) {
-            ps.setString(1, title);
-            ps.setString(2, genre);
-            ps.setInt(3, minutes);
-            ps.setString(4, description);
+                "UPDATE phim SET ten_phim=COALESCE(?,ten_phim),"
+                + "the_loai=COALESCE(?,the_loai),"
+                + "thoi_luong=COALESCE(?,thoi_luong),"
+                + "mo_ta=COALESCE(?,mo_ta) WHERE id=?")) {
+            bindMovieChanges(ps, title, genre, minutes, description);
             ps.setInt(5, id);
             if (ps.executeUpdate() == 0) {
-                throw new IllegalArgumentException("Phim không tồn tại");
+                ensureMovieExists(c, id);
             }
         }
     }
 
-    public String updateMovieWithPoster(int id, String title, String genre, int minutes,
+    public String updateMovieWithPoster(int id, String title, String genre, Integer minutes,
             String description, String posterFilename) throws SQLException {
         try (Connection c = CSDL.getConnection()) {
             c.setAutoCommit(false);
@@ -243,11 +244,11 @@ public final class CinemaRepository {
                     }
                 }
                 try (PreparedStatement ps = c.prepareStatement(
-                        "UPDATE phim SET ten_phim=?,the_loai=?,thoi_luong=?,mo_ta=?,anh=? WHERE id=?")) {
-                    ps.setString(1, title);
-                    ps.setString(2, genre);
-                    ps.setInt(3, minutes);
-                    ps.setString(4, description);
+                        "UPDATE phim SET ten_phim=COALESCE(?,ten_phim),"
+                        + "the_loai=COALESCE(?,the_loai),"
+                        + "thoi_luong=COALESCE(?,thoi_luong),"
+                        + "mo_ta=COALESCE(?,mo_ta),anh=? WHERE id=?")) {
+                    bindMovieChanges(ps, title, genre, minutes, description);
                     ps.setString(5, posterFilename);
                     ps.setInt(6, id);
                     ps.executeUpdate();
@@ -257,6 +258,29 @@ public final class CinemaRepository {
             } catch (SQLException | RuntimeException ex) {
                 c.rollback();
                 throw ex;
+            }
+        }
+    }
+
+    private static void bindMovieChanges(PreparedStatement ps, String title, String genre,
+            Integer minutes, String description) throws SQLException {
+        ps.setString(1, title);
+        ps.setString(2, genre);
+        if (minutes == null) {
+            ps.setNull(3, Types.INTEGER);
+        } else {
+            ps.setInt(3, minutes);
+        }
+        ps.setString(4, description);
+    }
+
+    private static void ensureMovieExists(Connection c, int id) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("SELECT 1 FROM phim WHERE id=?")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalArgumentException("Phim không tồn tại");
+                }
             }
         }
     }
