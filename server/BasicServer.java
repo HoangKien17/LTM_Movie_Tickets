@@ -179,6 +179,10 @@ public final class BasicServer {
                     count(p, 1);
                     admin(session);
                     return rows("STATS", "STAT", Collections.singletonList(cinema.stats()));
+                case "ADMIN_GET_REVENUE":
+                    count(p, 1);
+                    admin(session);
+                    return rows("REVENUE", "MOVIE_REVENUE", cinema.revenueByMovie());
                 case "ADMIN_ADD_MOVIE":
                     count(p, 5);
                     admin(session);

@@ -174,6 +174,10 @@ public final class CinemaService {
         return repository.stats();
     }
 
+    public List<String[]> revenueByMovie() throws SQLException {
+        return repository.revenueByMovie();
+    }
+
     private static void validateMovie(String title, String genre, int minutes, String description) {
         if (title == null || title.trim().isEmpty() || title.length() > 200
                 || genre == null || genre.length() > 100

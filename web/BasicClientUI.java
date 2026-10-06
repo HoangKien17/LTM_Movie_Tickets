@@ -639,7 +639,7 @@ public final class BasicClientUI extends JFrame {
         groups.add(adminGroup("Báo cáo", "Người dùng, đơn vé và doanh thu",
                 action("Người dùng", this::adminUsers, "subtle"),
                 action("Đơn vé", this::adminBookings, "subtle"),
-                action("Doanh thu", this::adminStats, "secondary"),
+                action("Doanh thu", this::adminRevenue, "secondary"),
                 action("Hủy đơn", this::adminCancel, "danger")));
         groups.setPreferredSize(new Dimension(0, 320));
         page.add(groups, BorderLayout.NORTH);
@@ -1172,9 +1172,25 @@ public final class BasicClientUI extends JFrame {
             if (data == null || data.isEmpty()) {
                 return;
             }
-            adminStats.setText("Tổng đơn: " + data.get(0)[0]
+            adminStats.setText("Vé còn hiệu lực: " + data.get(0)[0]
                     + "    •    Doanh thu còn hiệu lực: " + formatMoney(data.get(0)[1]));
             status.setText("Đã tải thống kê");
+        });
+    }
+
+    private void adminRevenue() {
+        send("ADMIN_GET_REVENUE", lines -> {
+            List<String[]> data = rows(lines, "REVENUE", "MOVIE_REVENUE", 3);
+            if (data == null) {
+                return;
+            }
+            List<Object[]> visible = new ArrayList<>();
+            for (String[] row : data) {
+                visible.add(new Object[]{row[0], row[1], formatMoney(row[2])});
+            }
+            setAdminTable("Doanh thu theo phim",
+                    new String[]{"Tên phim", "Vé còn hiệu lực", "Doanh thu"}, visible);
+            adminStats();
         });
     }
 

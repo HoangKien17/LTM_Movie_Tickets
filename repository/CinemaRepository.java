@@ -554,12 +554,38 @@ public final class CinemaRepository {
     }
 
     public String[] stats() throws SQLException {
-        String sql = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN trang_thai='active' "
-                + "THEN tong_tien ELSE 0 END),0) FROM don_dat_ve";
+        String sql = "SELECT (SELECT COUNT(*) FROM ve v "
+                + "JOIN don_dat_ve d ON d.id=v.don_dat_ve_id "
+                + "WHERE v.trang_thai='active' AND d.trang_thai='active'), "
+                + "(SELECT COALESCE(SUM(tong_tien),0) FROM don_dat_ve "
+                + "WHERE trang_thai='active')";
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             rs.next();
             return new String[]{rs.getString(1), rs.getBigDecimal(2).toPlainString()};
         }
+    }
+
+    public List<String[]> revenueByMovie() throws SQLException {
+        String sql = "SELECT p.ten_phim, COALESCE(SUM(b.so_ve),0), "
+                + "COALESCE(SUM(b.tong_tien),0) "
+                + "FROM phim p LEFT JOIN ("
+                + "SELECT x.phim_id, d.id, d.tong_tien, COUNT(v.id) AS so_ve "
+                + "FROM don_dat_ve d "
+                + "JOIN xuat_chieu x ON x.id=d.xuat_chieu_id "
+                + "JOIN ve v ON v.don_dat_ve_id=d.id "
+                + "WHERE d.trang_thai='active' AND v.trang_thai='active' "
+                + "GROUP BY x.phim_id, d.id, d.tong_tien"
+                + ") b ON b.phim_id=p.id "
+                + "GROUP BY p.id, p.ten_phim "
+                + "ORDER BY COALESCE(SUM(b.tong_tien),0) DESC, p.ten_phim";
+        List<String[]> rows = new ArrayList<>();
+        try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                rows.add(new String[]{rs.getString(1), rs.getString(2),
+                    rs.getBigDecimal(3).toPlainString()});
+            }
+        }
+        return rows;
     }
 
     private static int generatedId(PreparedStatement ps) throws SQLException {
