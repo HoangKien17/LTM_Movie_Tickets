@@ -193,13 +193,19 @@ public final class CinemaRepository {
     }
 
     public int addMovie(String title, String genre, int minutes, String description) throws SQLException {
+        return addMovie(title, genre, minutes, description, "");
+    }
+
+    public int addMovie(String title, String genre, int minutes, String description,
+            String posterFilename) throws SQLException {
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
                 "INSERT INTO phim (ten_phim,the_loai,thoi_luong,ngay_khoi_chieu,mo_ta,anh) "
-                + "VALUES (?,?,?,CURRENT_DATE,?,'')", Statement.RETURN_GENERATED_KEYS)) {
+                + "VALUES (?,?,?,CURRENT_DATE,?,?)", Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, title);
             ps.setString(2, genre);
             ps.setInt(3, minutes);
             ps.setString(4, description);
+            ps.setString(5, posterFilename);
             ps.executeUpdate();
             return generatedId(ps);
         }
@@ -220,18 +226,69 @@ public final class CinemaRepository {
         }
     }
 
-    public void deleteMovie(int id) throws SQLException {
-        try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "DELETE FROM phim WHERE id=?")) {
-            ps.setInt(1, id);
-            if (ps.executeUpdate() == 0) {
-                throw new IllegalArgumentException("Phim không tồn tại");
+    public String updateMovieWithPoster(int id, String title, String genre, int minutes,
+            String description, String posterFilename) throws SQLException {
+        try (Connection c = CSDL.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                String oldFilename;
+                try (PreparedStatement ps = c.prepareStatement(
+                        "SELECT anh FROM phim WHERE id=? FOR UPDATE")) {
+                    ps.setInt(1, id);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Phim không tồn tại");
+                        }
+                        oldFilename = rs.getString(1);
+                    }
+                }
+                try (PreparedStatement ps = c.prepareStatement(
+                        "UPDATE phim SET ten_phim=?,the_loai=?,thoi_luong=?,mo_ta=?,anh=? WHERE id=?")) {
+                    ps.setString(1, title);
+                    ps.setString(2, genre);
+                    ps.setInt(3, minutes);
+                    ps.setString(4, description);
+                    ps.setString(5, posterFilename);
+                    ps.setInt(6, id);
+                    ps.executeUpdate();
+                }
+                c.commit();
+                return oldFilename;
+            } catch (SQLException | RuntimeException ex) {
+                c.rollback();
+                throw ex;
             }
-        } catch (SQLException ex) {
-            if (ex.getErrorCode() == 1451) {
-                throw new IllegalArgumentException("Phim đang có suất chiếu");
+        }
+    }
+
+    public String deleteMovie(int id) throws SQLException {
+        try (Connection c = CSDL.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                String posterFilename;
+                try (PreparedStatement ps = c.prepareStatement(
+                        "SELECT anh FROM phim WHERE id=? FOR UPDATE")) {
+                    ps.setInt(1, id);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            throw new IllegalArgumentException("Phim không tồn tại");
+                        }
+                        posterFilename = rs.getString(1);
+                    }
+                }
+                try (PreparedStatement ps = c.prepareStatement("DELETE FROM phim WHERE id=?")) {
+                    ps.setInt(1, id);
+                    ps.executeUpdate();
+                }
+                c.commit();
+                return posterFilename;
+            } catch (SQLException | RuntimeException ex) {
+                c.rollback();
+                if (ex instanceof SQLException && ((SQLException) ex).getErrorCode() == 1451) {
+                    throw new IllegalArgumentException("Phim đang có suất chiếu");
+                }
+                throw ex;
             }
-            throw ex;
         }
     }
 

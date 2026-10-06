@@ -23,21 +23,28 @@ import java.awt.event.WindowEvent;
 import java.awt.geom.CubicCurve2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -55,6 +62,7 @@ import javax.swing.UIManager;
 import javax.swing.WindowConstants;
 import javax.swing.border.AbstractBorder;
 import javax.swing.border.EmptyBorder;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import protocol.Protocol;
@@ -817,7 +825,7 @@ public final class BasicClientUI extends JFrame {
                     return;
                 }
                 movies.add(new MovieItem(Integer.parseInt(p[1]), dec(p[2]),
-                        dec(p[3]), p[4], p[5], dec(p[6])));
+                        dec(p[3]), p[4], p[5], dec(p[6]), decodePoster(p[7])));
             }
             renderMovies();
             status.setText("Đã tải " + movies.size() + " phim");
@@ -868,7 +876,8 @@ public final class BasicClientUI extends JFrame {
         card.setPreferredSize(new Dimension(380, 210));
         JPanel poster = new JPanel(new BorderLayout());
         poster.setOpaque(false);
-        poster.add(new UiTheme.PosterPanel(movie.title), BorderLayout.NORTH);
+        poster.add(movie.poster == null ? new UiTheme.PosterPanel(movie.title)
+                : new PhotoPosterPanel(movie.poster), BorderLayout.NORTH);
         card.add(poster, BorderLayout.WEST);
         JPanel info = new JPanel();
         info.setOpaque(false);
@@ -1226,32 +1235,44 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void adminAddMovie() {
-        String[] v = prompt("Thêm phim", "Tên phim", "Thể loại", "Thời lượng (phút)", "Mô tả");
-        if (v == null) {
+        MovieForm form = promptMovie("Thêm phim", "Tên phim", "Thể loại",
+                "Thời lượng (phút)", "Mô tả");
+        if (form == null) {
             return;
         }
-        send("ADMIN_ADD_MOVIE;" + enc(v[0]) + ";" + enc(v[1]) + ";" + v[2] + ";" + enc(v[3]),
+        String posterData = posterPayload(form.posterFile);
+        if (posterData == null) {
+            return;
+        }
+        String[] v = form.values;
+        send("ADMIN_ADD_MOVIE;" + enc(v[0]) + ";" + enc(v[1]) + ";" + v[2]
+                + ";" + enc(v[3]) + ";" + posterData,
                 lines -> {
                     if (isOk(lines, "ADDED")) {
                         movies.clear();
-                        info("Đã thêm phim");
+                        info("Đã thêm phim" + (form.posterFile == null ? "" : " và poster"));
                         adminMovies();
                     }
                 });
     }
 
     private void adminUpdateMovie() {
-        String[] v = prompt("Sửa phim", "Mã phim", "Tên phim mới", "Thể loại",
-                "Thời lượng (phút)", "Mô tả");
-        if (v == null) {
+        MovieForm form = promptMovie("Sửa phim", "Mã phim", "Tên phim mới",
+                "Thể loại", "Thời lượng (phút)", "Mô tả");
+        if (form == null) {
             return;
         }
+        String posterData = posterPayload(form.posterFile);
+        if (posterData == null) {
+            return;
+        }
+        String[] v = form.values;
         send("ADMIN_UPDATE_MOVIE;" + v[0] + ";" + enc(v[1]) + ";" + enc(v[2])
-                + ";" + v[3] + ";" + enc(v[4]),
+                + ";" + v[3] + ";" + enc(v[4]) + ";" + posterData,
                 lines -> {
                     if (isOk(lines, "UPDATED")) {
                         movies.clear();
-                        info("Đã sửa phim");
+                        info("Đã sửa phim" + (form.posterFile == null ? "" : " và poster"));
                         adminMovies();
                     }
                 });
@@ -1389,6 +1410,78 @@ public final class BasicClientUI extends JFrame {
             values[i] = fields[i].getText().trim();
         }
         return values;
+    }
+
+    private MovieForm promptMovie(String title, String... labels) {
+        JPanel form = new JPanel(new GridLayout(0, 2, 10, 10));
+        form.setBorder(new EmptyBorder(14, 10, 14, 10));
+        JTextField[] fields = new JTextField[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            fields[i] = UiTheme.field(24);
+            form.add(label(labels[i], 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(fields[i]);
+        }
+        File[] selected = new File[1];
+        JLabel filename = label("Sửa phim".equals(title) ? "Giữ poster hiện tại" : "Chưa chọn ảnh",
+                12, Font.PLAIN, UiTheme.MUTED);
+        JButton choose = action("Chọn ảnh...", () -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Chọn poster cho phim");
+            chooser.setFileFilter(new FileNameExtensionFilter("Ảnh JPG hoặc PNG", "jpg", "jpeg", "png"));
+            chooser.setAcceptAllFileFilterUsed(false);
+            if (chooser.showOpenDialog(form) == JFileChooser.APPROVE_OPTION) {
+                selected[0] = chooser.getSelectedFile();
+                filename.setText(selected[0].getName());
+                filename.setToolTipText(selected[0].getAbsolutePath());
+            }
+        }, "subtle");
+        JPanel picker = new JPanel(new BorderLayout(8, 0));
+        picker.setOpaque(false);
+        picker.add(choose, BorderLayout.WEST);
+        picker.add(filename, BorderLayout.CENTER);
+        form.add(label("Poster JPG/PNG (tối đa 2 MB)", 13, Font.PLAIN, UiTheme.TEXT));
+        form.add(picker);
+        if (JOptionPane.showConfirmDialog(this, form, title,
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            return null;
+        }
+        String[] values = new String[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            values[i] = fields[i].getText().trim();
+        }
+        return new MovieForm(values, selected[0]);
+    }
+
+    private String posterPayload(File file) {
+        if (file == null) {
+            return "";
+        }
+        try {
+            if (!file.isFile() || Files.size(file.toPath()) > 2L * 1024 * 1024) {
+                showError("Ảnh poster phải là JPG/PNG và không quá 2 MB");
+                return null;
+            }
+            byte[] bytes = Files.readAllBytes(file.toPath());
+            if (bytes.length == 0 || bytes.length > 2 * 1024 * 1024) {
+                showError("Ảnh poster phải là JPG/PNG và không quá 2 MB");
+                return null;
+            }
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        } catch (IOException ex) {
+            showError("Không đọc được ảnh poster: " + ex.getMessage());
+            return null;
+        }
+    }
+
+    private static BufferedImage decodePoster(String payload) {
+        if (payload == null || payload.isEmpty() || payload.length() > 400_000) {
+            return null;
+        }
+        try {
+            return ImageIO.read(new ByteArrayInputStream(Base64.getUrlDecoder().decode(payload)));
+        } catch (IOException | IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private List<String[]> rows(List<String> lines, String kind, String tag, int fieldCount) {
@@ -1586,6 +1679,43 @@ public final class BasicClientUI extends JFrame {
         SwingUtilities.invokeLater(() -> new BasicClientUI().setVisible(true));
     }
 
+    private static final class MovieForm {
+
+        private final String[] values;
+        private final File posterFile;
+
+        private MovieForm(String[] values, File posterFile) {
+            this.values = values;
+            this.posterFile = posterFile;
+        }
+    }
+
+    private static final class PhotoPosterPanel extends JPanel {
+
+        private final BufferedImage poster;
+
+        private PhotoPosterPanel(BufferedImage poster) {
+            this.poster = poster;
+            setOpaque(false);
+            setPreferredSize(new Dimension(122, 170));
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                g.setClip(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 18, 18));
+                g.drawImage(poster, 0, 0, getWidth(), getHeight(), null);
+            } finally {
+                g.dispose();
+            }
+        }
+    }
+
     private static final class MovieItem {
 
         private final int id;
@@ -1594,15 +1724,17 @@ public final class BasicClientUI extends JFrame {
         private final String minutes;
         private final String release;
         private final String description;
+        private final BufferedImage poster;
 
         private MovieItem(int id, String title, String genre, String minutes,
-                String release, String description) {
+                String release, String description, BufferedImage poster) {
             this.id = id;
             this.title = title;
             this.genre = genre;
             this.minutes = minutes;
             this.release = release;
             this.description = description;
+            this.poster = poster;
         }
     }
 

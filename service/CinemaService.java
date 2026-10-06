@@ -75,20 +75,49 @@ public final class CinemaService {
 
     public int addMovie(String title, String genre, int minutes, String description)
             throws SQLException {
+        return addMovie(title, genre, minutes, description, "");
+    }
+
+    public int addMovie(String title, String genre, int minutes, String description,
+            String posterData) throws SQLException {
         validateMovie(title, genre, minutes, description);
-        return repository.addMovie(title.trim(), genre.trim(), minutes, description.trim());
+        String filename = PosterStorage.save(posterData);
+        try {
+            return repository.addMovie(title.trim(), genre.trim(), minutes,
+                    description.trim(), filename);
+        } catch (SQLException | RuntimeException ex) {
+            PosterStorage.delete(filename);
+            throw ex;
+        }
     }
 
     public void updateMovie(int id, String title, String genre, int minutes, String description)
             throws SQLException {
+        updateMovie(id, title, genre, minutes, description, "");
+    }
+
+    public void updateMovie(int id, String title, String genre, int minutes,
+            String description, String posterData) throws SQLException {
         requirePositive(id, "Mã phim");
         validateMovie(title, genre, minutes, description);
-        repository.updateMovie(id, title.trim(), genre.trim(), minutes, description.trim());
+        if (posterData == null || posterData.isEmpty()) {
+            repository.updateMovie(id, title.trim(), genre.trim(), minutes, description.trim());
+            return;
+        }
+        String filename = PosterStorage.save(posterData);
+        try {
+            String oldFilename = repository.updateMovieWithPoster(id, title.trim(),
+                    genre.trim(), minutes, description.trim(), filename);
+            PosterStorage.delete(oldFilename);
+        } catch (SQLException | RuntimeException ex) {
+            PosterStorage.delete(filename);
+            throw ex;
+        }
     }
 
     public void deleteMovie(int id) throws SQLException {
         requirePositive(id, "Mã phim");
-        repository.deleteMovie(id);
+        PosterStorage.delete(repository.deleteMovie(id));
     }
 
     public List<String[]> rooms() throws SQLException {

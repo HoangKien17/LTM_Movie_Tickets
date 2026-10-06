@@ -26,6 +26,7 @@ import model.Phim;
 import protocol.Protocol;
 import service.BasicService;
 import service.CinemaService;
+import service.PosterStorage;
 
 /**
  * TCP Server: giữ phiên đăng nhập và chuyển yêu cầu đến Service.
@@ -119,7 +120,8 @@ public final class BasicServer {
                         movieLines.add("MOVIE;" + m.getId() + ";" + enc(m.getTenPhim()) + ";"
                                 + enc(empty(m.getTheLoai())) + ";" + m.getThoiLuong() + ";"
                                 + (m.getNgayKhoiChieu() == null ? "" : m.getNgayKhoiChieu())
-                                + ";" + enc(empty(m.getMoTa())) + ";" + enc(empty(m.getAnh())));
+                                + ";" + enc(empty(m.getMoTa())) + ";"
+                                + PosterStorage.readBase64(m.getAnh()));
                     }
                     return movieLines;
                 case "GET_SHOWS":
@@ -184,15 +186,20 @@ public final class BasicServer {
                     admin(session);
                     return rows("REVENUE", "MOVIE_REVENUE", cinema.revenueByMovie());
                 case "ADMIN_ADD_MOVIE":
-                    count(p, 5);
+                    if (p.length != 5 && p.length != 6) {
+                        throw new IllegalArgumentException("Số tham số không hợp lệ");
+                    }
                     admin(session);
                     return one("OK;ADDED;" + cinema.addMovie(
-                            dec(p[1]), dec(p[2]), number(p[3]), dec(p[4])));
+                            dec(p[1]), dec(p[2]), number(p[3]), dec(p[4]),
+                            p.length == 6 ? p[5] : ""));
                 case "ADMIN_UPDATE_MOVIE":
-                    count(p, 6);
+                    if (p.length != 6 && p.length != 7) {
+                        throw new IllegalArgumentException("Số tham số không hợp lệ");
+                    }
                     admin(session);
                     cinema.updateMovie(number(p[1]), dec(p[2]), dec(p[3]),
-                            number(p[4]), dec(p[5]));
+                            number(p[4]), dec(p[5]), p.length == 7 ? p[6] : "");
                     return one("OK;UPDATED");
                 case "ADMIN_DELETE_MOVIE":
                     count(p, 2);
