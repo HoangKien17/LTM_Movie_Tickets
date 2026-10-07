@@ -1,5 +1,15 @@
 package web;
 
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.GradientPaint;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -11,19 +21,12 @@ import javax.swing.JToggleButton;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.GradientPaint;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 
-/** Màu sắc và thành phần hiển thị. Không chứa giao thức hay truy cập dữ liệu. */
+/**
+ * Màu sắc và thành phần hiển thị. Không chứa giao thức hay truy cập dữ liệu.
+ */
 final class UiTheme {
+
     static final Color BACKGROUND = new Color(245, 247, 251);
     static final Color WHITE = Color.WHITE;
     static final Color NAVY = new Color(18, 27, 48);
@@ -40,7 +43,8 @@ final class UiTheme {
     static final Color RED_PALE = new Color(255, 235, 239);
     static final Color GOLD = new Color(244, 184, 80);
 
-    private UiTheme() { }
+    private UiTheme() {
+    }
 
     static Font font(int size, int style) {
         return new Font("Segoe UI", style, size);
@@ -133,6 +137,7 @@ final class UiTheme {
     }
 
     static class RoundedPanel extends javax.swing.JPanel {
+
         private final Color fill;
         private final int radius;
 
@@ -154,6 +159,7 @@ final class UiTheme {
     }
 
     static class StyledButton extends JButton {
+
         private final Color fill;
         private final Color textColor;
         private final int radius;
@@ -173,8 +179,15 @@ final class UiTheme {
             setBorder(new EmptyBorder(10, 16, 10, 16));
             setPreferredSize(new Dimension(Math.max(92, text.length() * 8 + 34), 40));
             addMouseListener(new MouseAdapter() {
-                @Override public void mouseEntered(MouseEvent event) { repaint(); }
-                @Override public void mouseExited(MouseEvent event) { repaint(); }
+                @Override
+                public void mouseEntered(MouseEvent event) {
+                    repaint();
+                }
+
+                @Override
+                public void mouseExited(MouseEvent event) {
+                    repaint();
+                }
             });
         }
 
@@ -183,9 +196,14 @@ final class UiTheme {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             Color color = fill;
-            if (getModel().isPressed()) color = blend(fill, NAVY, 0.16f);
-            else if (getModel().isRollover()) color = blend(fill, NAVY, 0.08f);
-            if (!isEnabled()) color = LINE;
+            if (getModel().isPressed()) {
+                color = blend(fill, NAVY, 0.16f); 
+            }else if (getModel().isRollover()) {
+                color = blend(fill, NAVY, 0.08f);
+            }
+            if (!isEnabled()) {
+                color = LINE;
+            }
             g.setColor(color);
             g.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
             g.dispose();
@@ -195,6 +213,7 @@ final class UiTheme {
     }
 
     static class SeatButton extends JToggleButton {
+
         private final boolean taken;
 
         SeatButton(String code, boolean taken) {
@@ -207,7 +226,9 @@ final class UiTheme {
             setContentAreaFilled(false);
             setOpaque(false);
             setPreferredSize(new Dimension(66, 42));
-            if (!taken) setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+            if (!taken) {
+                setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+            }
         }
 
         @Override
@@ -230,6 +251,7 @@ final class UiTheme {
     }
 
     static class PosterPanel extends javax.swing.JPanel {
+
         private final String label;
 
         PosterPanel(String label) {
@@ -248,8 +270,8 @@ final class UiTheme {
             g.fillOval(getWidth() - 85, -25, 115, 115);
             g.fillOval(-60, getHeight() - 70, 130, 130);
             g.setColor(GOLD);
-            g.setFont(font(12, Font.BOLD));
-            g.drawString("LTM CINEMA", 16, 26);
+            g.setFont(font(10, Font.BOLD));
+            g.drawString("GALAXY CINEMA", 13, 26);
             g.setColor(WHITE);
             g.setFont(font(34, Font.BOLD));
             String initial = label.isEmpty() ? "P" : label.substring(0, 1).toUpperCase();

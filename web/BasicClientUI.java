@@ -20,8 +20,6 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.geom.CubicCurve2D;
-import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -120,7 +118,7 @@ public final class BasicClientUI extends JFrame {
     private String activePage = "MOVIES";
 
     public BasicClientUI() {
-        super("LTM Movie Tickets");
+        super("Galaxy Cinema");
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setSize(1220, 780);
         setMinimumSize(new Dimension(980, 690));
@@ -185,7 +183,7 @@ public final class BasicClientUI extends JFrame {
         content.setOpaque(false);
 
         int row = 0;
-        addAuthRow(content, authLabel("LTM MOVIE TICKETS", 12, Font.BOLD, UiTheme.PRIMARY), row++, 13);
+        addAuthRow(content, authLabel("GALAXY CINEMA", 12, Font.BOLD, UiTheme.PRIMARY), row++, 13);
         addAuthRow(content, authLabel(heading, 25, Font.BOLD, UiTheme.TEXT), row++, 4);
         addAuthRow(content, authLabel(subtitle, 12, Font.PLAIN, UiTheme.MUTED), row++, 23);
         addAuthRow(content, form, row++, 20);
@@ -343,68 +341,61 @@ public final class BasicClientUI extends JFrame {
 
     private static final class CinemaPanel extends JPanel {
 
+        private static final BufferedImage ARTWORK = loadArtwork();
+
         private CinemaPanel() {
             setOpaque(false);
+        }
+
+        private static BufferedImage loadArtwork() {
+            try {
+                return ImageIO.read(new File("assets/galaxy-cinema-auth.png"));
+            } catch (IOException exception) {
+                return null;
+            }
         }
 
         @Override
         protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             int w = getWidth();
             int h = getHeight();
-            g.setPaint(new GradientPaint(0, 0, new Color(13, 14, 43),
-                    w, h, new Color(6, 34, 61)));
+            g.setPaint(new GradientPaint(0, 0, new Color(12, 14, 42),
+                    w, h, new Color(5, 31, 56)));
             g.fillRect(0, 0, w, h);
+            g.setColor(new Color(110, 76, 178, 24));
+            g.fillOval(-w / 3, -h / 4, w, h / 2);
 
             g.setFont(new Font("SansSerif", Font.BOLD, 24));
-            g.setColor(new Color(174, 139, 227));
-            g.drawString("LTM MOVIE TICKETS", 36, 69);
+            g.setColor(new Color(255, 210, 146));
+            g.drawString("GALAXY CINEMA", 36, 70);
+            g.setPaint(new GradientPaint(36, 95, new Color(255, 216, 154),
+                    116, 95, new Color(125, 89, 192)));
+            g.fillRoundRect(36, 91, 80, 3, 3, 3);
+
             g.setFont(new Font("SansSerif", Font.BOLD, 30));
             g.setColor(Color.WHITE);
-            g.drawString("Mỗi suất chiếu", 36, 167);
-            g.drawString("một trải nghiệm mới.", 36, 206);
+            g.drawString("Mỗi suất chiếu", 36, 169);
+            g.drawString("một trải nghiệm mới.", 36, 208);
             g.setFont(new Font("SansSerif", Font.PLAIN, 14));
-            g.setColor(new Color(194, 202, 222));
-            g.drawString("Khám phá phim hay, chọn chỗ ngồi yêu thích", 36, 240);
-            g.drawString("và giữ vé chỉ trong vài bước.", 36, 261);
+            g.setColor(new Color(203, 211, 230));
+            g.drawString("Khám phá phim hay, chọn chỗ ngồi yêu thích", 36, 246);
+            g.drawString("và giữ vé chỉ trong vài bước.", 36, 267);
 
-            int cx = Math.round(w * 0.38f);
-            int cy = Math.round(h * 0.70f);
-            int r = Math.min(89, Math.max(61, w / 6));
-            g.setPaint(new GradientPaint(cx - r, cy - r, new Color(255, 216, 135),
-                    cx + r, cy + r, new Color(165, 95, 49)));
-            g.fill(new Ellipse2D.Float(cx - r, cy - r, r * 2, r * 2));
-            g.setColor(new Color(94, 49, 48));
-            g.setStroke(new java.awt.BasicStroke(5));
-            g.draw(new Ellipse2D.Float(cx - r + 8, cy - r + 8, r * 2 - 16, r * 2 - 16));
-            for (int i = 0; i < 5; i++) {
-                double angle = i * Math.PI * 2 / 5 - Math.PI / 2;
-                int holeX = cx + (int) (r * 0.52 * Math.cos(angle));
-                int holeY = cy + (int) (r * 0.52 * Math.sin(angle));
-                g.setColor(new Color(28, 33, 62));
-                g.fill(new Ellipse2D.Float(holeX - 15, holeY - 20, 30, 40));
+            int artTop = 315;
+            int artBottom = h - 56;
+            if (ARTWORK != null && artBottom > artTop) {
+                int availableHeight = artBottom - artTop;
+                int artWidth = w + 24;
+                int artHeight = Math.round(artWidth * (float) ARTWORK.getHeight() / ARTWORK.getWidth());
+                int artX = (w - artWidth) / 2;
+                int artY = artTop + (availableHeight - artHeight) / 2;
+                g.drawImage(ARTWORK, artX, artY, artWidth, artHeight, null);
             }
-            g.setColor(new Color(91, 55, 56));
-            g.fill(new Ellipse2D.Float(cx - 12, cy - 12, 24, 24));
 
-            CubicCurve2D film = new CubicCurve2D.Float(cx + r - 10, cy + r / 3,
-                    cx + r + 30, cy + r, w - 90, cy - r / 2,
-                    w - 28, cy + r / 2);
-            g.setColor(new Color(246, 187, 93));
-            g.setStroke(new java.awt.BasicStroke(24, java.awt.BasicStroke.CAP_ROUND,
-                    java.awt.BasicStroke.JOIN_ROUND));
-            g.draw(film);
-            g.setColor(new Color(32, 37, 58));
-            g.setStroke(new java.awt.BasicStroke(15, java.awt.BasicStroke.CAP_ROUND,
-                    java.awt.BasicStroke.JOIN_ROUND));
-            g.draw(film);
-            g.setColor(new Color(255, 218, 145));
-            for (int i = 0; i < 16; i++) {
-                int x = 46 + (i * 37) % Math.max(100, w - 75);
-                int y = 294 + (i * 59) % Math.max(80, h - 380);
-                g.fillOval(x, y, i % 3 == 0 ? 4 : 2, i % 3 == 0 ? 4 : 2);
-            }
             g.setFont(new Font("SansSerif", Font.BOLD, 10));
             g.setColor(new Color(173, 181, 207));
             g.drawString("KHÁM PHÁ  ·  ĐẶT VÉ  ·  THƯỞNG THỨC", 36, h - 31);
@@ -437,11 +428,11 @@ public final class BasicClientUI extends JFrame {
         JPanel top = new JPanel();
         top.setOpaque(false);
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-        JLabel mark = label("LTM  /  CINEMA", 18, Font.BOLD, UiTheme.WHITE);
+        JLabel mark = label("GALAXY CINEMA", 18, Font.BOLD, UiTheme.WHITE);
         mark.setBorder(new EmptyBorder(0, 12, 0, 0));
         top.add(mark);
         top.add(Box.createVerticalStrut(6));
-        JLabel tagline = label("Movie ticket studio", 11, Font.PLAIN, new Color(166, 179, 208));
+        JLabel tagline = label("Trải nghiệm điện ảnh", 11, Font.PLAIN, new Color(166, 179, 208));
         tagline.setBorder(new EmptyBorder(0, 12, 0, 0));
         top.add(tagline);
         top.add(Box.createVerticalStrut(48));
@@ -1577,7 +1568,7 @@ public final class BasicClientUI extends JFrame {
 
     private void info(String message) {
         status.setText(message);
-        JOptionPane.showMessageDialog(this, message, "LTM Cinema", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(this, message, "Galaxy Cinema", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void closeClient() {
@@ -1820,7 +1811,7 @@ public final class BasicClientUI extends JFrame {
             JPanel top = new JPanel();
             top.setOpaque(false);
             top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-            top.add(label("LTM  /  CINEMA", 15, Font.BOLD, UiTheme.GOLD));
+            top.add(label("GALAXY CINEMA", 15, Font.BOLD, UiTheme.GOLD));
             top.add(Box.createVerticalStrut(80));
             top.add(label("Mỗi suất chiếu", 29, Font.BOLD, UiTheme.WHITE));
             top.add(Box.createVerticalStrut(6));

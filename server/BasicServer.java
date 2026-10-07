@@ -57,7 +57,7 @@ public final class BasicServer {
     private void serve() throws IOException {
         ExecutorService pool = Executors.newCachedThreadPool();
         try (ServerSocket listener = new ServerSocket(PORT)) {
-            System.out.println("Movie Tickets Server đã sẵn sàng tại cổng " + PORT);
+            System.out.println("Galaxy Cinema Server đã sẵn sàng tại cổng " + PORT);
             while (true) {
                 Socket socket = listener.accept();
                 pool.execute(() -> handleClient(socket));
