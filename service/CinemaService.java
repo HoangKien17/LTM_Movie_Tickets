@@ -58,18 +58,18 @@ public final class CinemaService {
         return repository.bookings(0, true);
     }
 
-    public void cancel(int userId, long bookingId) throws SQLException {
+    public int cancel(int userId, long bookingId) throws SQLException {
         if (bookingId < 1) {
             throw new IllegalArgumentException("Mã đơn không hợp lệ");
         }
-        repository.cancel(userId, bookingId, false);
+        return repository.cancel(userId, bookingId, false);
     }
 
-    public void adminCancel(long bookingId) throws SQLException {
+    public int adminCancel(long bookingId) throws SQLException {
         if (bookingId < 1) {
             throw new IllegalArgumentException("Mã đơn không hợp lệ");
         }
-        repository.cancel(0, bookingId, true);
+        return repository.cancel(0, bookingId, true);
     }
 
     public int addMovie(String title, String genre, int minutes, String description)

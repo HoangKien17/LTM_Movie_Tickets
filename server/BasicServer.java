@@ -19,6 +19,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import model.NguoiDung;
@@ -36,6 +41,7 @@ public final class BasicServer {
     private static final int PORT = 2040;
     private final BasicService basic = new BasicService();
     private final CinemaService cinema = new CinemaService();
+    private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
 
     public static void main(String[] args) {
         BasicServer app = new BasicServer();
@@ -68,23 +74,30 @@ public final class BasicServer {
     }
 
     private void handleClient(Socket socket) {
-        Session session = new Session();
+        Session session = null;
         try (Socket client = socket; BufferedReader input = new BufferedReader(new InputStreamReader(
-                client.getInputStream(), StandardCharsets.UTF_8)); BufferedWriter output = new BufferedWriter(new OutputStreamWriter(
-                client.getOutputStream(), StandardCharsets.UTF_8))) {
+                client.getInputStream(), StandardCharsets.UTF_8))) {
+            session = new Session(client);
+            sessions.add(session);
             String request;
             while ((request = input.readLine()) != null) {
-                List<String> response = process(request, session);
-                for (String line : response) {
-                    output.write(line);
-                    output.newLine();
-                }
-                output.write("END");
-                output.newLine();
-                output.flush();
+                session.send(process(request, session));
             }
         } catch (IOException ex) {
             System.out.println("Client ngắt kết nối: " + ex.getMessage());
+        } finally {
+            if (session != null) {
+                sessions.remove(session);
+                session.close();
+            }
+        }
+    }
+
+    private void seatsChanged(int showId) {
+        for (Session viewer : sessions) {
+            if (viewer.watchedShowId == showId) {
+                viewer.send(one("EVENT;SEATS_CHANGED;" + showId));
+            }
         }
     }
 
@@ -103,11 +116,13 @@ public final class BasicServer {
                     if (user == null) {
                         return error("Sai tài khoản hoặc mật khẩu");
                     }
+                    session.watchedShowId = 0;
                     session.user = user;
                     return one("OK;LOGIN;" + user.getId() + ";" + enc(user.getHoTen())
                             + ";" + enc(user.getGmail()) + ";" + enc(user.getVaiTro()));
                 case "LOGOUT":
                     count(p, 1);
+                    session.watchedShowId = 0;
                     session.user = null;
                     return one("OK;LOGOUT");
                 case "GET_MOVIES":
@@ -128,6 +143,19 @@ public final class BasicServer {
                     count(p, 2);
                     signedIn(session);
                     return rows("SHOWS", "SHOW", cinema.shows(number(p[1])));
+                case "WATCH_SHOW":
+                    count(p, 2);
+                    signedIn(session);
+                    int watchedId = number(p[1]);
+                    if (watchedId < 0) {
+                        throw new IllegalArgumentException("Mã suất chiếu không hợp lệ");
+                    }
+                    // Đăng ký trước khi đọc snapshot để không bỏ lỡ thay đổi trong lúc tải.
+                    session.watchedShowId = watchedId;
+                    if (watchedId == 0) {
+                        return one("OK;WATCHING;0");
+                    }
+                    return rows("SEATS", "SEAT", cinema.seats(watchedId));
                 case "GET_SEAT_MAP":
                     count(p, 2);
                     signedIn(session);
@@ -135,8 +163,10 @@ public final class BasicServer {
                 case "BOOK_TICKET":
                     count(p, 3);
                     signedIn(session);
-                    return one("OK;BOOKED;" + cinema.book(session.user.getId(),
-                            number(p[1]), dec(p[2])));
+                    int bookedShowId = number(p[1]);
+                    long bookingId = cinema.book(session.user.getId(), bookedShowId, dec(p[2]));
+                    seatsChanged(bookedShowId);
+                    return one("OK;BOOKED;" + bookingId);
                 case "GET_BOOKINGS":
                     count(p, 1);
                     signedIn(session);
@@ -154,7 +184,7 @@ public final class BasicServer {
                 case "CANCEL_TICKET":
                     count(p, 2);
                     signedIn(session);
-                    cinema.cancel(session.user.getId(), longNumber(p[1]));
+                    seatsChanged(cinema.cancel(session.user.getId(), longNumber(p[1])));
                     return one("OK;CANCELLED");
                 case "ADMIN_GET_ROOMS":
                     count(p, 1);
@@ -175,7 +205,7 @@ public final class BasicServer {
                 case "ADMIN_CANCEL_TICKET":
                     count(p, 2);
                     admin(session);
-                    cinema.adminCancel(longNumber(p[1]));
+                    seatsChanged(cinema.adminCancel(longNumber(p[1])));
                     return one("OK;CANCELLED");
                 case "ADMIN_GET_STATS":
                     count(p, 1);
@@ -338,8 +368,66 @@ public final class BasicServer {
         return one("ERR;" + message.replace(';', ',').replace('\n', ' '));
     }
 
-    private static final class Session {
+    private static final class Session implements AutoCloseable {
 
         private NguoiDung user;
+        private volatile int watchedShowId;
+        private final Socket socket;
+        private final BufferedWriter output;
+        private final BlockingQueue<List<String>> outgoing = new ArrayBlockingQueue<>(64);
+        private final AtomicBoolean closed = new AtomicBoolean();
+        private final Thread writer;
+
+        private Session(Socket socket) throws IOException {
+            this.socket = socket;
+            socket.setTcpNoDelay(true);
+            output = new BufferedWriter(new OutputStreamWriter(
+                    socket.getOutputStream(), StandardCharsets.UTF_8));
+            writer = new Thread(this::writeLoop, "cinema-writer-" + socket.getPort());
+            writer.setDaemon(true);
+            writer.start();
+        }
+
+        private void send(List<String> frame) {
+            // Không để client chậm làm kẹt thread xử lý đặt vé hoặc broadcast.
+            if (!closed.get() && !outgoing.offer(new ArrayList<>(frame))) {
+                close();
+            }
+        }
+
+        private void writeLoop() {
+            try {
+                while (!closed.get()) {
+                    List<String> frame = outgoing.take();
+                    // Một writer duy nhất: response và event không xen dòng vào nhau.
+                    for (String line : frame) {
+                        output.write(line);
+                        output.newLine();
+                    }
+                    output.write("END");
+                    output.newLine();
+                    output.flush();
+                }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            } catch (IOException ex) {
+                System.out.println("Không gửi được dữ liệu cho Client: " + ex.getMessage());
+            } finally {
+                close();
+            }
+        }
+
+        @Override
+        public void close() {
+            if (closed.compareAndSet(false, true)) {
+                watchedShowId = 0;
+                outgoing.clear();
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                }
+                writer.interrupt();
+            }
+        }
     }
 }

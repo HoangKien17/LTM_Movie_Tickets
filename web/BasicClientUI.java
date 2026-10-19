@@ -111,7 +111,11 @@ public final class BasicClientUI extends JFrame {
     private final JLabel adminStats = label("", 13, Font.PLAIN, UiTheme.MUTED);
     private JPanel adminNavGroup;
 
-    private MovieClient client;
+    private volatile MovieClient client;
+    // Các trường trạng thái ghế chỉ được truy cập trên Swing EDT.
+    private int seatMapShowId;
+    private int pendingSeatRefreshShowId;
+    private MovieClient disconnectedClient;
     private boolean busy;
     private boolean admin;
     private boolean compactMovies;
@@ -695,6 +699,9 @@ public final class BasicClientUI extends JFrame {
             return;
         }
         activePage = page;
+        if (!"SHOWS".equals(page)) {
+            pendingSeatRefreshShowId = 0;
+        }
         pageLayout.show(pages, page);
         for (Map.Entry<String, NavButton> entry : navigation.entrySet()) {
             entry.getValue().setActive(entry.getKey().equals(page));
@@ -787,17 +794,7 @@ public final class BasicClientUI extends JFrame {
             if (!isOk(lines, "LOGOUT")) {
                 return;
             }
-            closeClient();
-            admin = false;
-            movies.clear();
-            showPrices.clear();
-            movieGrid.removeAll();
-            showTable.clearSelection();
-            showModel.setRowCount(0);
-            bookingModel.setRowCount(0);
-            seatGrid.removeAll();
-            seatButtons.clear();
-            adminModel.setRowCount(0);
+            resetSession();
             screenLayout.show(screens, "LOGIN");
             status.setText("Đã đăng xuất");
         });
@@ -961,6 +958,8 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void clearSeats() {
+        seatMapShowId = 0;
+        pendingSeatRefreshShowId = 0;
         seatButtons.clear();
         seatGrid.removeAll();
         seatTitle.setText("Chọn một suất chiếu để xem ghế");
@@ -976,17 +975,53 @@ public final class BasicClientUI extends JFrame {
             showError("Hãy chọn một suất chiếu");
             return;
         }
-        send("GET_SEAT_MAP;" + showId, lines -> {
+        if (seatMapShowId != showId) {
+            clearSeats();
+        }
+        // Nếu đang có request, giữ lại yêu cầu mới nhất thay vì bỏ qua thao tác chọn suất.
+        pendingSeatRefreshShowId = showId;
+        flushSeatRefresh();
+    }
+
+    private void onSeatsChanged(int showId) {
+        if ("SHOWS".equals(activePage) && selectedShowId() == showId) {
+            pendingSeatRefreshShowId = showId;
+            flushSeatRefresh();
+        }
+    }
+
+    private void flushSeatRefresh() {
+        if (busy || pendingSeatRefreshShowId == 0 || client == null) {
+            return;
+        }
+        int showId = pendingSeatRefreshShowId;
+        pendingSeatRefreshShowId = 0;
+        if (!"SHOWS".equals(activePage) || selectedShowId() != showId) {
+            return;
+        }
+        // WATCH_SHOW trả snapshot đồng thời đăng ký nhận các thay đổi tiếp theo.
+        send("WATCH_SHOW;" + showId, lines -> {
             List<String[]> data = rows(lines, "SEATS", "SEAT", 2);
-            if (data == null || selectedShowId() != showId) {
+            if (data == null || selectedShowId() != showId || !"SHOWS".equals(activePage)) {
                 return;
+            }
+            // Đọc lựa chọn lúc áp dụng snapshot: người dùng có thể vừa chọn thêm ghế.
+            List<String> selected = new ArrayList<>();
+            if (seatMapShowId == showId) {
+                for (UiTheme.SeatButton button : seatButtons) {
+                    if (button.isSelected()) {
+                        selected.add(button.getText());
+                    }
+                }
             }
             seatButtons.clear();
             seatGrid.removeAll();
+            seatMapShowId = showId;
             seatTitle.setText("Sơ đồ ghế — suất #" + showId);
             for (String[] row : data) {
                 boolean taken = "taken".equals(row[1]);
                 UiTheme.SeatButton button = new UiTheme.SeatButton(row[0], taken);
+                button.setSelected(!taken && selected.contains(row[0]));
                 button.addActionListener(event -> updateSelection());
                 seatGrid.add(button);
                 if (!taken) {
@@ -998,7 +1033,7 @@ public final class BasicClientUI extends JFrame {
             seatGrid.revalidate();
             seatGrid.repaint();
             updateSelection();
-            status.setText("Đã tải " + data.size() + " ghế");
+            status.setText("Đã cập nhật " + data.size() + " ghế — đồng bộ trực tiếp");
         });
     }
 
@@ -1017,9 +1052,17 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void book() {
+        if (busy) {
+            status.setText("Hãy chờ cập nhật ghế hoàn tất");
+            return;
+        }
         int showId = selectedShowId();
         if (showId == 0) {
             showError("Hãy chọn một suất chiếu");
+            return;
+        }
+        if (seatMapShowId != showId) {
+            showError("Sơ đồ ghế đang tải. Hãy chờ rồi đặt vé.");
             return;
         }
         List<String> codes = new ArrayList<>();
@@ -1523,12 +1566,14 @@ public final class BasicClientUI extends JFrame {
                     Thread.currentThread().interrupt();
                     showError("Thao tác bị gián đoạn");
                 } catch (ExecutionException | RuntimeException ex) {
-                    closeClient();
                     Throwable cause = ex instanceof ExecutionException ? ex.getCause() : ex;
-                    admin = false;
-                    adminNavGroup.setVisible(false);
+                    resetSession();
                     screenLayout.show(screens, "LOGIN");
                     showError("Không liên hệ được máy chủ: " + cause.getMessage());
+                } finally {
+                    // Không bỏ mất EOF hoặc event đến khi request đang chạy.
+                    handlePendingDisconnect();
+                    flushSeatRefresh();
                 }
             }
         }.execute();
@@ -1542,7 +1587,19 @@ public final class BasicClientUI extends JFrame {
         }
         int port = portText == null || portText.trim().isEmpty()
                 ? MovieClient.DEFAULT_PORT : Integer.parseInt(portText.trim());
-        return new MovieClient(host, port, MovieClient.DEFAULT_TIMEOUT_MS);
+        MovieClient connected = new MovieClient(host, port, MovieClient.DEFAULT_TIMEOUT_MS);
+        connected.setSeatChangeListener(showId -> SwingUtilities.invokeLater(() -> {
+            if (client == connected) {
+                onSeatsChanged(showId);
+            }
+        }));
+        connected.setDisconnectListener(error -> SwingUtilities.invokeLater(() -> {
+            if (client == connected) {
+                disconnectedClient = connected;
+                handlePendingDisconnect();
+            }
+        }));
+        return connected;
     }
 
     private boolean isOk(List<String> lines, String expected) {
@@ -1571,7 +1628,32 @@ public final class BasicClientUI extends JFrame {
         JOptionPane.showMessageDialog(this, message, "Galaxy Cinema", JOptionPane.INFORMATION_MESSAGE);
     }
 
+    private void handlePendingDisconnect() {
+        if (!busy && disconnectedClient != null && client == disconnectedClient) {
+            resetSession();
+            screenLayout.show(screens, "LOGIN");
+            showError("Mất kết nối máy chủ. Hãy đăng nhập lại.");
+        }
+    }
+
+    private void resetSession() {
+        disconnectedClient = null;
+        closeClient();
+        admin = false;
+        adminNavGroup.setVisible(false);
+        activePage = "MOVIES";
+        movies.clear();
+        showPrices.clear();
+        movieGrid.removeAll();
+        showTable.clearSelection();
+        showModel.setRowCount(0);
+        bookingModel.setRowCount(0);
+        adminModel.setRowCount(0);
+        clearSeats();
+    }
+
     private void closeClient() {
+        pendingSeatRefreshShowId = 0;
         if (client == null) {
             return;
         }

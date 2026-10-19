@@ -155,18 +155,20 @@ public final class CinemaRepository {
         return rows;
     }
 
-    public void cancel(int userId, long bookingId, boolean admin) throws SQLException {
+    public int cancel(int userId, long bookingId, boolean admin) throws SQLException {
         try (Connection c = CSDL.getConnection()) {
             c.setAutoCommit(false);
             try {
+                int showId;
                 try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT d.nguoi_dung_id,d.trang_thai,x.bat_dau FROM don_dat_ve d "
+                        "SELECT d.nguoi_dung_id,d.trang_thai,x.bat_dau,x.id FROM don_dat_ve d "
                         + "JOIN xuat_chieu x ON x.id=d.xuat_chieu_id WHERE d.id=? FOR UPDATE")) {
                     ps.setLong(1, bookingId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next() || (!admin && rs.getInt(1) != userId)) {
                             throw new IllegalArgumentException("Không tìm thấy đơn đặt vé của bạn");
                         }
+                        showId = rs.getInt(4);
                         if (!"active".equals(rs.getString(2))) {
                             throw new IllegalArgumentException("Đơn đặt vé đã hủy");
                         }
@@ -186,6 +188,7 @@ public final class CinemaRepository {
                     ps.executeUpdate();
                 }
                 c.commit();
+                return showId; // Chỉ thông báo sau khi cả đơn và vé đã commit.
             } catch (SQLException | RuntimeException ex) {
                 c.rollback();
                 throw ex;
