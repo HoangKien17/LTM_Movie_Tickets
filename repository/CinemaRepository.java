@@ -46,7 +46,7 @@ public final class CinemaRepository {
         String sql = "SELECT g.ma_ghe, CASE WHEN v.id IS NULL THEN 'free' ELSE 'taken' END "
                 + "FROM xuat_chieu x JOIN ghe g ON g.phong_chieu_id=x.phong_chieu_id "
                 + "LEFT JOIN ve v ON v.xuat_chieu_id=x.id AND v.ghe_id=g.id "
-                + "AND v.trang_thai='active' WHERE x.id=? ORDER BY g.ma_ghe";
+                + "AND v.trang_thai='active' WHERE x.id=? ORDER BY LEFT(g.ma_ghe,1),CAST(SUBSTRING(g.ma_ghe,2) AS UNSIGNED)";
         List<String[]> rows = new ArrayList<>();
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, showId);
@@ -134,7 +134,7 @@ public final class CinemaRepository {
     public List<String[]> bookings(int userId, boolean all) throws SQLException {
         String sql = "SELECT d.id, u.ho_ten, p.ten_phim, r.ten_phong, x.bat_dau, "
                 + "d.tong_tien, d.trang_thai, "
-                + "(SELECT GROUP_CONCAT(g.ma_ghe ORDER BY g.ma_ghe SEPARATOR ',') "
+                + "(SELECT GROUP_CONCAT(g.ma_ghe ORDER BY LEFT(g.ma_ghe,1),CAST(SUBSTRING(g.ma_ghe,2) AS UNSIGNED) SEPARATOR ',') "
                 + "FROM ve v JOIN ghe g ON g.id=v.ghe_id WHERE v.don_dat_ve_id=d.id) "
                 + "FROM don_dat_ve d JOIN nguoi_dung u ON u.id=d.nguoi_dung_id "
                 + "JOIN xuat_chieu x ON x.id=d.xuat_chieu_id "
@@ -161,7 +161,7 @@ public final class CinemaRepository {
             try {
                 int showId;
                 try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT d.nguoi_dung_id,d.trang_thai,x.bat_dau,x.id FROM don_dat_ve d "
+                        "SELECT d.nguoi_dung_id,d.trang_thai,x.bat_dau,x.id,d.checked_in_at FROM don_dat_ve d "
                         + "JOIN xuat_chieu x ON x.id=d.xuat_chieu_id WHERE d.id=? FOR UPDATE")) {
                     ps.setLong(1, bookingId);
                     try (ResultSet rs = ps.executeQuery()) {
@@ -169,6 +169,9 @@ public final class CinemaRepository {
                             throw new IllegalArgumentException("Không tìm thấy đơn đặt vé của bạn");
                         }
                         showId = rs.getInt(4);
+                        if (rs.getTimestamp(5) != null) {
+                            throw new IllegalArgumentException("Đơn đã soát vé, không thể hủy");
+                        }
                         if (!"active".equals(rs.getString(2))) {
                             throw new IllegalArgumentException("Đơn đặt vé đã hủy");
                         }

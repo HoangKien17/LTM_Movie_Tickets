@@ -32,13 +32,17 @@ import protocol.Protocol;
 import service.BasicService;
 import service.CinemaService;
 import service.PosterStorage;
+import service.TicketService;
 
 /**
  * TCP Server: giữ phiên đăng nhập và chuyển yêu cầu đến Service.
  */
 public final class BasicServer {
 
-    private static final int PORT = 2040;
+    private static final int PORT = Integer.parseInt(
+            System.getenv().getOrDefault("MOVIE_SERVER_PORT", "2040"));
+    private final ServerMonitor monitor = new ServerMonitor();
+    private final TicketService tickets = new TicketService();
     private final BasicService basic = new BasicService();
     private final CinemaService cinema = new CinemaService();
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
@@ -48,10 +52,11 @@ public final class BasicServer {
         try {
             app.basic.verifyReady();
             app.cinema.rooms();
+            app.tickets.verifyReady();
             app.serve();
         } catch (SQLException ex) {
             System.err.println("MySQL chưa sẵn sàng. Hãy chạy database/schema.sql "
-                    + "và kiểm tra MOVIE_DB_URL, MOVIE_DB_USER, MOVIE_DB_PASSWORD.");
+                    + "(database cũ: chạy thêm database/migrate_v2.sql) và kiểm tra MOVIE_DB_*.");
             System.err.println(ex.getMessage());
             System.exit(1);
         } catch (IOException ex) {
@@ -81,10 +86,17 @@ public final class BasicServer {
             sessions.add(session);
             String request;
             while ((request = input.readLine()) != null) {
-                session.send(process(request, session));
+                long started = System.nanoTime();
+                List<String> response = process(request, session);
+                long elapsed = System.nanoTime() - started;
+                monitor.identity(session.monitorId, session.user, session.watchedShowId);
+                monitor.completed(session.monitorId, request, response, elapsed);
+                session.send(response);
             }
         } catch (IOException ex) {
-            System.out.println("Client ngắt kết nối: " + ex.getMessage());
+            if (session != null) {
+                monitor.connectionError(session.monitorId, "Lỗi đọc kết nối TCP");
+            }
         } finally {
             if (session != null) {
                 sessions.remove(session);
@@ -181,6 +193,24 @@ public final class BasicServer {
                         }
                     }
                     return error("Không tìm thấy đơn đặt vé của bạn");
+                case "GET_E_TICKET":
+                    count(p, 2);
+                    signedIn(session);
+                    return rows("E_TICKET", "TICKET", Collections.singletonList(
+                            tickets.ownTicket(session.user.getId(), longNumber(p[1]))));
+                case "INSPECT_TICKET":
+                    count(p, 2);
+                    staff(session);
+                    return rows("E_TICKET", "TICKET", Collections.singletonList(tickets.inspect(dec(p[1]))));
+                case "CHECK_IN":
+                    count(p, 2);
+                    staff(session);
+                    return rows("CHECKED_IN", "TICKET", Collections.singletonList(
+                            tickets.checkIn(session.user.getId(), dec(p[1]))));
+                case "ADMIN_MONITOR":
+                    count(p, 1);
+                    admin(session);
+                    return monitor.snapshot();
                 case "CANCEL_TICKET":
                     count(p, 2);
                     signedIn(session);
@@ -313,6 +343,14 @@ public final class BasicServer {
         }
     }
 
+    private static void staff(Session session) {
+        signedIn(session);
+        String role = session.user.getVaiTro();
+        if (!"admin".equals(role) && !"staff".equals(role)) {
+            throw new IllegalArgumentException("Chỉ nhân viên hoặc quản trị viên được soát vé");
+        }
+    }
+
     private static void admin(Session session) {
         signedIn(session);
         if (!"admin".equals(session.user.getVaiTro())) {
@@ -368,9 +406,10 @@ public final class BasicServer {
         return one("ERR;" + message.replace(';', ',').replace('\n', ' '));
     }
 
-    private static final class Session implements AutoCloseable {
+    private final class Session implements AutoCloseable {
 
         private NguoiDung user;
+        private final long monitorId;
         private volatile int watchedShowId;
         private final Socket socket;
         private final BufferedWriter output;
@@ -383,6 +422,7 @@ public final class BasicServer {
             socket.setTcpNoDelay(true);
             output = new BufferedWriter(new OutputStreamWriter(
                     socket.getOutputStream(), StandardCharsets.UTF_8));
+            monitorId = monitor.connected(socket.getRemoteSocketAddress().toString());
             writer = new Thread(this::writeLoop, "cinema-writer-" + socket.getPort());
             writer.setDaemon(true);
             writer.start();
@@ -391,6 +431,7 @@ public final class BasicServer {
         private void send(List<String> frame) {
             // Không để client chậm làm kẹt thread xử lý đặt vé hoặc broadcast.
             if (!closed.get() && !outgoing.offer(new ArrayList<>(frame))) {
+                monitor.connectionError(monitorId, "Client chậm: hàng đợi gửi đã đầy");
                 close();
             }
         }
@@ -411,7 +452,7 @@ public final class BasicServer {
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
             } catch (IOException ex) {
-                System.out.println("Không gửi được dữ liệu cho Client: " + ex.getMessage());
+                monitor.connectionError(monitorId, "Lỗi ghi kết nối TCP");
             } finally {
                 close();
             }
@@ -420,6 +461,7 @@ public final class BasicServer {
         @Override
         public void close() {
             if (closed.compareAndSet(false, true)) {
+                monitor.disconnected(monitorId);
                 watchedShowId = 0;
                 outgoing.clear();
                 try {

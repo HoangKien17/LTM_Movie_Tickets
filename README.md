@@ -14,6 +14,15 @@ Tên repository `LTM_Movie_Tickets` và database `movie_tickets_ltm` được gi
 - Xem danh sách phim, mô tả, poster và các suất chiếu.
 - Xem sơ đồ ghế còn trống hoặc đã được đặt; chọn tối đa 10 ghế trong một lần đặt.
 - Đặt vé, xem danh sách/chi tiết đơn của mình và hủy đơn.
+- Xem vé QR ngay sau khi đặt hoặc từ **Vé của tôi → Vé QR**; lưu QR thành ảnh PNG.
+- Sơ đồ ghế hiển thị đúng hàng/số ghế, có màn chiếu và khoảng lối đi giữa.
+- Ghế tự cập nhật khi client khác đặt/hủy, giữ các lựa chọn vẫn còn trống.
+
+**Nhân viên soát vé (staff) và quản trị viên**
+
+- Nhập mã vé hoặc đọc ảnh QR PNG/JPG, xem thông tin và xác nhận khách vào rạp.
+- Một QR áp dụng cho toàn bộ ghế trong một đơn. Vé hủy/đã dùng bị từ chối.
+- Hai máy soát cùng mã chỉ có một máy thành công. Đơn đã soát không được hủy.
 
 **Quản trị viên**
 
@@ -21,6 +30,8 @@ Tên repository `LTM_Movie_Tickets` và database `movie_tickets_ltm` được gi
 - Thêm, xem, sửa và xóa phòng chiếu; cấu hình ghế bằng số hàng × số ghế mỗi hàng.
 - Thêm, xem, sửa và xóa suất chiếu.
 - Xem người dùng, tất cả đơn vé, hủy đơn và xem thống kê.
+- Mở **Giám sát server** để xem kết nối, thời điểm kết nối, số yêu cầu, thời gian xử lý và nhật ký.
+  Màn hình tự làm mới mỗi 2 giây khi đang mở; chỉ admin có quyền truy cập.
 - Xem báo cáo theo phim gồm số vé còn hiệu lực và doanh thu; các đơn/vé đã hủy không được tính vào báo cáo.
 
 Ứng dụng hiện ghi nhận đơn đặt vé trong database; **chưa tích hợp thanh toán trực tuyến**.
@@ -46,6 +57,8 @@ Giao thức dùng một dòng cho mỗi yêu cầu, các trường được ngă
 - JDK **11 trở lên** (`java -version` và `javac -version`).
 - MySQL Server đang chạy và một tài khoản MySQL có quyền tạo database/bảng khi khởi tạo.
 - Windows PowerShell nếu dùng các lệnh bên dưới. Repository đã có `lib/mysql-connector-j-9.7.0.jar`, không cần tải thêm JDBC driver.
+- QR dùng ZXing Core 3.5.4, đã có trong lib/zxing-core-3.5.4.jar cùng giấy phép Apache 2.0.
+  Khi biên dịch cần thêm -cp 'lib/*' như lệnh bên dưới.
 
 Các lệnh sau được chạy **tại thư mục gốc dự án** (nơi có `database/`, `web/`, `server/` và `README.md`).
 
@@ -76,6 +89,14 @@ MySQL sẽ hỏi mật khẩu ở Terminal. Cú pháp `source` được [MySQL h
 
 > `schema.sql` dùng `CREATE TABLE IF NOT EXISTS`: chạy lại script **không tự nâng cấp cấu trúc bảng cũ**. Nếu bạn đang dùng database của phiên bản dự án trước, hãy sao lưu dữ liệu và kiểm tra schema trước khi cập nhật.
 
+### Nâng cấp database đang dùng
+
+Dừng Server, mở database/migrate_v2.sql trong MySQL Workbench và chạy toàn bộ.
+Script bổ sung token QR, thời điểm/người soát vé và quyền staff, giữ nguyên dữ liệu.
+Có thể chạy lại migration. Database mới tạo bằng schema.sql đã có cấu trúc này.
+
+Hướng dẫn đầy đủ, danh sách file và kiểm thử: [HUONG_DAN_V2.md](HUONG_DAN_V2.md).
+
 ### 3. Cấu hình kết nối MySQL cho Server
 
 Tạo file `.env` tại thư mục gốc dự án:
@@ -93,7 +114,7 @@ Thay tên đăng nhập và mật khẩu bằng thông tin MySQL trên máy ch�
 ```powershell
 $javaFiles = (Get-ChildItem -Recurse -File -Filter '*.java' | Where-Object { $_.FullName -notmatch '\\(out|bin|target)\\' }).FullName
 New-Item -ItemType Directory -Path out -Force | Out-Null
-javac -encoding UTF-8 --release 11 -d out $javaFiles
+javac -encoding UTF-8 --release 11 -cp 'lib/*' -d out $javaFiles
 ```
 
 Chỉ tiếp tục khi lệnh `javac` không báo lỗi. Sau mỗi lần sửa file `.java`, hãy biên dịch lại và khởi động lại chương trình.
@@ -202,3 +223,33 @@ out/          File .class sinh ra khi biên dịch, không đưa lên Git
 - **Không thấy hình cuộn phim khi đăng nhập**: kiểm tra đúng file `assets/galaxy-cinema-auth.png`, chạy Client từ thư mục gốc và mở lại Client.
 - **`ClassNotFoundException` hoặc vẫn thấy giao diện cũ**: biên dịch lại toàn bộ mã vào `out/`, đóng Client cũ rồi chạy lại bằng lệnh ở trên.
 
+
+
+## Tài khoản nhân viên và soát vé
+
+Đăng ký một tài khoản qua giao diện, sau đó admin database cấp vai trò:
+
+~~~sql
+USE movie_tickets_ltm;
+UPDATE nguoi_dung SET vai_tro='staff' WHERE gmail='email-nhan-vien@example.com';
+~~~
+
+Đăng xuất và đăng nhập lại. Staff có trang Soát vé; admin có Soát vé và Giám sát server.
+Nhân viên không có quyền đọc danh sách người dùng, quản trị phim/phòng hoặc xem giám sát.
+
+## Kiểm thử tính năng mới
+
+~~~powershell
+java -cp 'out;lib/*' tests.FeatureUnitTest
+java -cp 'out;lib/*' tests.RealtimeTransportTest
+java -cp 'out;lib/*' tests.RealtimeUiTest
+~~~
+
+tests.FeatureSmokeTest chạy qua server thật, tự tạo tài khoản/phim/phòng/đơn để kiểm tra
+QR và hai máy soát đồng thời. Chỉ chạy trên MySQL thử nghiệm riêng và đặt
+MOVIE_TEST_ISOLATED=1, MOVIE_DB_URL, MOVIE_DB_USER, MOVIE_DB_PASSWORD,
+MOVIE_SERVER_HOST, MOVIE_SERVER_PORT đúng môi trường đó. Xem HUONG_DAN_V2.md.
+
+Server đọc MOVIE_SERVER_PORT, mặc định 2040. Cổng của client phải khớp.
+Nhật ký giám sát giữ tối đa 500 dòng trong RAM, xóa khi khởi động lại server;
+trạng thái soát vé lưu bền vững trong MySQL.

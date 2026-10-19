@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS nguoi_dung (
     gmail VARCHAR(100) NOT NULL UNIQUE,
     so_dien_thoai VARCHAR(15) NOT NULL UNIQUE,
     mat_khau VARCHAR(255) NOT NULL,
-    vai_tro ENUM('user', 'admin') NOT NULL DEFAULT 'user',
+    vai_tro ENUM('user', 'admin', 'staff') NOT NULL DEFAULT 'user',
     ngay_tao TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS don_dat_ve (
     tong_tien DECIMAL(14,2) NOT NULL,
     trang_thai ENUM('active', 'cancelled') NOT NULL DEFAULT 'active',
     ngay_dat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ticket_token VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    checked_in_at DATETIME NULL,
+    checked_in_by INT NULL,
+    UNIQUE KEY uq_don_ticket_token (ticket_token),
+    CONSTRAINT fk_don_checker FOREIGN KEY (checked_in_by) REFERENCES nguoi_dung(id),
     CONSTRAINT fk_don_nguoi FOREIGN KEY (nguoi_dung_id) REFERENCES nguoi_dung(id),
     CONSTRAINT fk_don_xuat FOREIGN KEY (xuat_chieu_id) REFERENCES xuat_chieu(id),
     INDEX ix_don_nguoi (nguoi_dung_id, ngay_dat)

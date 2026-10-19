@@ -1,22 +1,25 @@
 package tests;
 
-import protocol.Protocol;
-import web.MovieClient;
-
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import protocol.Protocol;
+import web.MovieClient;
 
 /**
- * Kiểm thử qua TCP Server thật. Cần hai tài khoản thường và một suất chiếu còn ghế.
- * Bài kiểm thử đặt một ghế rồi hủy trong phần dọn dẹp.
+ * Kiểm thử qua TCP Server thật. Cần hai tài khoản thường và một suất chiếu còn
+ * ghế. Bài kiểm thử đặt một ghế rồi hủy trong phần dọn dẹp.
  */
 public final class Step7SmokeTest {
-    private Step7SmokeTest() { }
+
+    private Step7SmokeTest() {
+    }
 
     public static void main(String[] args) throws Exception {
         String user1 = required("MOVIE_TEST_USER_1");
@@ -28,7 +31,9 @@ public final class Step7SmokeTest {
         long bookingId = 0;
         boolean cancelled = false;
 
-        try (MovieClient client1 = connect(); MovieClient client2 = connect()) {
+        try (MovieClient client1 = connect(); MovieClient client2 = connect(); MovieClient observer = connect()) {
+            BlockingQueue<Integer> changes = new LinkedBlockingQueue<>();
+            observer.setSeatChangeListener(changes::offer);
             try {
                 expectError(client1.request("GET_BOOKINGS"), "Chưa đăng nhập phải bị từ chối");
                 expectError(client1.request("ADMIN_GET_USERS"), "Quản trị chưa đăng nhập phải bị từ chối");
@@ -41,6 +46,8 @@ public final class Step7SmokeTest {
                         "Sai mật khẩu phải bị từ chối");
                 int id1 = login(client1, user1, pass1);
                 int id2 = login(client2, user2, pass2);
+                expectError(observer.request("WATCH_SHOW;1"), "Theo dõi ghế phải đăng nhập");
+                login(observer, user1, pass1);
                 check(id1 != id2, "Hai tài khoản kiểm thử phải khác nhau");
                 expectError(client1.request("ADMIN_GET_USERS"),
                         "Tài khoản thường không được xem danh sách người dùng");
@@ -50,6 +57,7 @@ public final class Step7SmokeTest {
                 expectOk(movies, "MOVIES");
                 check(movies.size() > 1, "Không có phim trong database");
                 SeatTarget target = findFreeSeat(client1);
+                expectOk(observer.request("WATCH_SHOW;" + target.showId), "SEATS");
                 System.out.println("[3/7] Phim, suất chiếu và sơ đồ ghế: OK");
 
                 expectError(client1.request("BOOK_TICKET;" + target.showId + ";"
@@ -74,14 +82,19 @@ public final class Step7SmokeTest {
                 boolean secondWon = isOk(result2, "BOOKED");
                 check(firstWon != secondWon,
                         "Hai Client đặt cùng một ghế: phải đúng một thành công. Kết quả: "
-                                + result1 + " / " + result2);
+                        + result1 + " / " + result2);
                 expectError(firstWon ? result2 : result1,
                         "Client thua phải nhận lỗi ghế đã đặt");
                 winner = firstWon ? client1 : client2;
                 MovieClient loser = firstWon ? client2 : client1;
                 List<String> won = firstWon ? result1 : result2;
                 bookingId = Long.parseLong(won.get(0).split(";", -1)[2]);
-                System.out.println("[5/7] Hai Client đặt cùng ghế, chỉ một thành công: OK");
+                check(Integer.valueOf(target.showId).equals(changes.poll(5, TimeUnit.SECONDS)),
+                        "Client đang nhàn rỗi phải nhận push sau khi đặt vé");
+                // Round-trip sau hai kết quả đặt vé: mọi event trước đó đã được reader xử lý.
+                observer.request("GET_SEAT_MAP;" + target.showId);
+                check(changes.isEmpty(), "Yêu cầu đặt vé thất bại không được phát thêm event");
+                System.out.println("[5/7] Hai Client tranh ghế và client thứ ba nhận push: OK");
 
                 List<String> detail = winner.request("GET_TICKET;" + bookingId);
                 expectOk(detail, "BOOKINGS");
@@ -99,6 +112,8 @@ public final class Step7SmokeTest {
 
                 expectOk(winner.request("CANCEL_TICKET;" + bookingId), "CANCELLED");
                 cancelled = true;
+                check(Integer.valueOf(target.showId).equals(changes.poll(5, TimeUnit.SECONDS)),
+                        "Client đang nhàn rỗi phải nhận push sau khi hủy vé");
                 expectError(winner.request("CANCEL_TICKET;" + bookingId),
                         "Không được hủy cùng đơn hai lần");
                 check("free".equals(seatState(winner, target)),
@@ -107,6 +122,8 @@ public final class Step7SmokeTest {
                 expectError(client1.request("GET_BOOKINGS"),
                         "Sau đăng xuất không được xem vé");
                 expectOk(client2.request("LOGOUT"), "LOGOUT");
+                expectOk(observer.request("WATCH_SHOW;0"), "WATCHING");
+                expectOk(observer.request("LOGOUT"), "LOGOUT");
                 System.out.println("[7/7] Hủy vé, mở lại ghế và đăng xuất: OK");
                 System.out.println("BƯỚC 7: TẤT CẢ KIỂM THỬ TỰ ĐỘNG ĐÃ ĐẠT");
             } finally {
@@ -133,7 +150,9 @@ public final class Step7SmokeTest {
             check(row.length == 7 && "SHOW".equals(row[0]), "Dữ liệu suất chiếu không hợp lệ");
             int showId = Integer.parseInt(Protocol.decode(row[1]));
             LocalDateTime start = LocalDateTime.parse(Protocol.decode(row[5]));
-            if (!start.isAfter(LocalDateTime.now().plusMinutes(2))) continue;
+            if (!start.isAfter(LocalDateTime.now().plusMinutes(2))) {
+                continue;
+            }
             List<String> seats = client.request("GET_SEAT_MAP;" + showId);
             expectOk(seats, "SEATS");
             for (int j = 1; j < seats.size(); j++) {
@@ -172,7 +191,9 @@ public final class Step7SmokeTest {
     private static MovieClient connect() throws Exception {
         String host = System.getenv("MOVIE_SERVER_HOST");
         String port = System.getenv("MOVIE_SERVER_PORT");
-        if (host == null || host.trim().isEmpty()) host = MovieClient.DEFAULT_HOST;
+        if (host == null || host.trim().isEmpty()) {
+            host = MovieClient.DEFAULT_HOST;
+        }
         int number = port == null || port.trim().isEmpty()
                 ? MovieClient.DEFAULT_PORT : Integer.parseInt(port.trim());
         return new MovieClient(host, number, MovieClient.DEFAULT_TIMEOUT_MS);
@@ -204,10 +225,13 @@ public final class Step7SmokeTest {
     }
 
     private static void check(boolean condition, String message) {
-        if (!condition) throw new IllegalStateException(message);
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
     }
 
     private static final class SeatTarget {
+
         private final int showId;
         private final String seatCode;
 

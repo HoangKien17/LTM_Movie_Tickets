@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -95,7 +96,7 @@ public final class BasicClientUI extends JFrame {
     private final Map<Integer, BigDecimal> showPrices = new LinkedHashMap<>();
     private final DefaultTableModel showModel = model("Mã", "Phim", "Phòng", "Bắt đầu", "Giá vé");
     private final JTable showTable = new JTable(showModel);
-    private final JPanel seatGrid = new JPanel(new GridLayout(0, 8, 10, 10));
+    private final SeatMapPanel seatGrid = new SeatMapPanel();
     private final JLabel seatTitle = label("Chọn một suất chiếu để xem ghế", 16, Font.BOLD, UiTheme.TEXT);
     private final JLabel seatHint = label("Ghế xanh còn trống, ghế tím đã chọn", 12, Font.PLAIN, UiTheme.MUTED);
     private final JLabel selectedSeats = label("Chưa chọn ghế", 13, Font.PLAIN, UiTheme.MUTED);
@@ -110,6 +111,11 @@ public final class BasicClientUI extends JFrame {
     private final JLabel adminResultTitle = label("Chọn một mục để xem dữ liệu", 17, Font.BOLD, UiTheme.TEXT);
     private final JLabel adminStats = label("", 13, Font.PLAIN, UiTheme.MUTED);
     private JPanel adminNavGroup;
+    private JPanel staffNavGroup;
+    private TicketCheckInPanel checkInPanel;
+    private ServerMonitorPanel monitorPanel;
+    private boolean staff;
+    private String pendingElectronicTicket;
 
     private volatile MovieClient client;
     // Các trường trạng thái ghế chỉ được truy cập trên Swing EDT.
@@ -419,6 +425,12 @@ public final class BasicClientUI extends JFrame {
         pages.add(buildShows(), "SHOWS");
         pages.add(buildBookings(), "BOOKINGS");
         pages.add(buildAdmin(), "ADMIN");
+        checkInPanel = new TicketCheckInPanel(this::send,
+                () -> !busy && staff && "CHECK_IN".equals(activePage));
+        monitorPanel = new ServerMonitorPanel(this::send,
+                () -> !busy && admin && "MONITOR".equals(activePage));
+        pages.add(checkInPanel, "CHECK_IN");
+        pages.add(monitorPanel, "MONITOR");
         right.add(pages, BorderLayout.CENTER);
         root.add(right, BorderLayout.CENTER);
         return root;
@@ -447,13 +459,22 @@ public final class BasicClientUI extends JFrame {
         top.add(nav("SHOWS", "02   Suất chiếu & ghế"));
         top.add(Box.createVerticalStrut(6));
         top.add(nav("BOOKINGS", "03   Vé của tôi"));
+        staffNavGroup = new JPanel();
+        staffNavGroup.setOpaque(false);
+        staffNavGroup.setLayout(new BoxLayout(staffNavGroup, BoxLayout.Y_AXIS));
+        staffNavGroup.add(Box.createVerticalStrut(6));
+        staffNavGroup.add(nav("CHECK_IN", "04   Soát vé"));
+        staffNavGroup.setVisible(false);
+        top.add(staffNavGroup);
         adminNavGroup = new JPanel();
         adminNavGroup.setOpaque(false);
         adminNavGroup.setLayout(new BoxLayout(adminNavGroup, BoxLayout.Y_AXIS));
         adminNavGroup.add(Box.createVerticalStrut(28));
         adminNavGroup.add(sideCaption("HỆ THỐNG"));
         adminNavGroup.add(Box.createVerticalStrut(9));
-        adminNavGroup.add(nav("ADMIN", "04   Quản trị"));
+        adminNavGroup.add(nav("ADMIN", "05   Quản trị"));
+        adminNavGroup.add(Box.createVerticalStrut(6));
+        adminNavGroup.add(nav("MONITOR", "06   Giám sát server"));
         adminNavGroup.setVisible(false);
         top.add(adminNavGroup);
         sidebar.add(top, BorderLayout.NORTH);
@@ -606,6 +627,12 @@ public final class BasicClientUI extends JFrame {
         actions.setOpaque(false);
         actions.add(action("Làm mới", this::loadBookings, "secondary"));
         actions.add(action("Chi tiết", this::ticketDetail, "subtle"));
+        actions.add(action("Vé QR", () -> {
+            String id = selectedBookingId();
+            if (id != null) {
+                electronicTicket(id);
+            }
+        }, "secondary"));
         actions.add(action("Hủy đơn", this::cancel, "danger"));
         head.add(actions, BorderLayout.EAST);
         page.add(head, BorderLayout.NORTH);
@@ -695,8 +722,14 @@ public final class BasicClientUI extends JFrame {
             status.setText("Hãy chờ thao tác hiện tại hoàn tất");
             return;
         }
-        if ("ADMIN".equals(page) && !admin) {
+        if (("ADMIN".equals(page) || "MONITOR".equals(page)) && !admin) {
             return;
+        }
+        if ("CHECK_IN".equals(page) && !staff) {
+            return;
+        }
+        if (!"MONITOR".equals(page)) {
+            monitorPanel.stop();
         }
         activePage = page;
         if (!"SHOWS".equals(page)) {
@@ -728,6 +761,17 @@ public final class BasicClientUI extends JFrame {
                 pageSubtitle.setText("Theo dõi và quản lý những đơn vé đã đặt.");
                 if (fetch) {
                     loadBookings();
+                }
+                break;
+            case "CHECK_IN":
+                pageTitle.setText("Soát vé điện tử");
+                pageSubtitle.setText("Kiểm tra mã và xác nhận khách vào rạp.");
+                break;
+            case "MONITOR":
+                pageTitle.setText("Giám sát server");
+                pageSubtitle.setText("Kết nối, yêu cầu và nhật ký hoạt động.");
+                if (fetch) {
+                    monitorPanel.start();
                 }
                 break;
             case "ADMIN":
@@ -781,7 +825,9 @@ public final class BasicClientUI extends JFrame {
             }
             userLabel.setText("Xin chào, " + dec(data[3]));
             admin = "admin".equals(dec(data[5]));
+            staff = admin || "staff".equals(dec(data[5]));
             adminNavGroup.setVisible(admin);
+            staffNavGroup.setVisible(staff);
             loginPassword.setText("");
             screenLayout.show(screens, "MAIN");
             navigate("MOVIES");
@@ -1014,24 +1060,10 @@ public final class BasicClientUI extends JFrame {
                     }
                 }
             }
-            seatButtons.clear();
-            seatGrid.removeAll();
             seatMapShowId = showId;
             seatTitle.setText("Sơ đồ ghế — suất #" + showId);
-            for (String[] row : data) {
-                boolean taken = "taken".equals(row[1]);
-                UiTheme.SeatButton button = new UiTheme.SeatButton(row[0], taken);
-                button.setSelected(!taken && selected.contains(row[0]));
-                button.addActionListener(event -> updateSelection());
-                seatGrid.add(button);
-                if (!taken) {
-                    seatButtons.add(button);
-                }
-            }
-            int rows = Math.max(1, (data.size() + 7) / 8);
-            seatGrid.setPreferredSize(new Dimension(630, rows * 54));
-            seatGrid.revalidate();
-            seatGrid.repaint();
+            seatButtons.clear();
+            seatButtons.addAll(seatGrid.render(data, new HashSet<>(selected), this::updateSelection));
             updateSelection();
             status.setText("Đã cập nhật " + data.size() + " ghế — đồng bộ trực tiếp");
         });
@@ -1091,6 +1123,7 @@ public final class BasicClientUI extends JFrame {
                 return;
             }
             String[] p = lines.get(0).split(";", -1);
+            pendingElectronicTicket = p.length > 2 ? p[2] : null;
             info("Đặt vé thành công" + (p.length > 2 ? " — mã đơn #" + p[2] : ""));
             navigate("BOOKINGS");
         });
@@ -1109,6 +1142,11 @@ public final class BasicClientUI extends JFrame {
             }
             bookingCount.setText(data.size() + " đơn vé trong lịch sử");
             status.setText("Đã tải " + data.size() + " đơn vé");
+            if (pendingElectronicTicket != null) {
+                String id = pendingElectronicTicket;
+                pendingElectronicTicket = null;
+                electronicTicket(id);
+            }
         });
     }
 
@@ -1119,6 +1157,15 @@ public final class BasicClientUI extends JFrame {
             return null;
         }
         return bookingModel.getValueAt(bookingTable.convertRowIndexToModel(row), 0).toString();
+    }
+
+    private void electronicTicket(String id) {
+        send("GET_E_TICKET;" + id, lines -> {
+            List<String[]> data = rows(lines, "E_TICKET", "TICKET", 8);
+            if (data != null && data.size() == 1) {
+                ElectronicTicketDialog.show(this, data.get(0));
+            }
+        });
     }
 
     private void ticketDetail() {
@@ -1637,6 +1684,11 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void resetSession() {
+        staff = false;
+        staffNavGroup.setVisible(false);
+        pendingElectronicTicket = null;
+        checkInPanel.reset();
+        monitorPanel.reset();
         disconnectedClient = null;
         closeClient();
         admin = false;
@@ -1653,6 +1705,9 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void closeClient() {
+        if (monitorPanel != null) {
+            monitorPanel.stop();
+        }
         pendingSeatRefreshShowId = 0;
         if (client == null) {
             return;
