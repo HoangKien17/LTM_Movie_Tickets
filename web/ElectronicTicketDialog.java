@@ -25,6 +25,12 @@ final class ElectronicTicketDialog {
     static JPanel content(String[] ticket, Component dialog) {
         JPanel root = new JPanel(new BorderLayout(18, 14));
         root.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        root.setBackground(UiTheme.BACKGROUND);
+        JLabel heading = new JLabel("GALAXY CINEMA  /  VÉ ĐIỆN TỬ");
+        heading.setForeground(UiTheme.PRIMARY);
+        heading.setFont(UiTheme.font(20, Font.BOLD));
+        heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        root.add(heading, BorderLayout.NORTH);
         boolean active = "active".equals(ticket[5]) && ticket[6].isEmpty();
         String state = !"active".equals(ticket[5]) ? "Đã hủy"
                 : ticket[6].isEmpty() ? "Chưa sử dụng" : "Đã sử dụng lúc " + ticket[6].replace('T', ' ');
@@ -40,7 +46,20 @@ final class ElectronicTicketDialog {
         details.setWrapStyleWord(true);
         details.setFont(UiTheme.font(14, Font.PLAIN));
         details.setPreferredSize(new Dimension(330, 220));
-        root.add(details, BorderLayout.CENTER);
+        UiTheme.RoundedPanel stub = UiTheme.surface();
+        stub.setLayout(new BorderLayout(0, 16));
+        JLabel film = new JLabel("ĐƠN #" + ticket[0]);
+        film.setFont(UiTheme.font(20, Font.BOLD));
+        film.setForeground(UiTheme.PURPLE);
+        stub.add(film, BorderLayout.NORTH);
+        stub.add(UiTheme.scroll(details), BorderLayout.CENTER);
+        JLabel badge = new JLabel(state);
+        badge.setForeground(active ? UiTheme.GREEN : UiTheme.RED);
+        badge.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createDashedBorder(UiTheme.LINE, 1, 4, 3, false),
+                BorderFactory.createEmptyBorder(14, 10, 14, 10)));
+        stub.add(badge, BorderLayout.SOUTH);
+        root.add(stub, BorderLayout.CENTER);
         if (active) {
             String payload = "GALAXY CINEMA\nMã đơn: " + ticket[0] + "\nPhim: " + ticket[1]
                     + "\nPhòng: " + ticket[2] + "\nSuất: " + ticket[3].replace('T', ' ') + "\nGhế: " + ticket[4]
@@ -49,8 +68,10 @@ final class ElectronicTicketDialog {
             BufferedImage qr = QrImages.encode(payload, 360);
             root.add(new JLabel(new ImageIcon(qr)), BorderLayout.WEST);
             JPanel bottom = new JPanel(new BorderLayout(8, 8));
+            bottom.setOpaque(false);
             JTextField code = new JTextField(payload);
             code.setEditable(false);
+            UiTheme.styleField(code);
             code.setToolTipText("Có thể sao chép để nhân viên nhập mã");
             bottom.add(code, BorderLayout.CENTER);
             JButton save = UiTheme.primary("Lưu ảnh QR");

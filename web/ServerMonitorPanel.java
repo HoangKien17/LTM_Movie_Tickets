@@ -31,7 +31,9 @@ final class ServerMonitorPanel extends JPanel {
         this.ready = ready;
         setBorder(BorderFactory.createEmptyBorder(24, 27, 24, 27));
         setBackground(UiTheme.BACKGROUND);
-        JPanel top = new JPanel(new BorderLayout(10, 10));
+        JPanel top = UiTheme.surface();
+        top.setLayout(new BorderLayout(10, 10));
+        summary.setForeground(UiTheme.PRIMARY);
         summary.setFont(UiTheme.font(13, Font.BOLD));
         top.add(summary, BorderLayout.CENTER);
         JButton refresh = UiTheme.secondary("Làm mới");
@@ -70,6 +72,8 @@ final class ServerMonitorPanel extends JPanel {
         }
         JPanel logSection = section("", history);
         JPanel logHeader = new JPanel(new BorderLayout(10, 0));
+        logHeader.setOpaque(false);
+        logTitle.setForeground(UiTheme.PRIMARY);
         logHeader.add(logTitle, BorderLayout.CENTER);
         logHeader.add(allSessions, BorderLayout.EAST);
         logSection.add(logHeader, BorderLayout.NORTH);
@@ -77,6 +81,7 @@ final class ServerMonitorPanel extends JPanel {
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, section("Client đang kết nối — chọn phiên để xem nhật ký", connections),
                 logSection);
         split.setResizeWeight(0.4);
+        split.setBorder(BorderFactory.createEmptyBorder());
         split.setDividerLocation(210);
         add(split, BorderLayout.CENTER);
         add(new JLabel("Tự cập nhật mỗi 2 giây • Thời gian xử lý không gồm gửi qua mạng • Bộ đếm theo phiên chạy server"),
@@ -146,8 +151,8 @@ final class ServerMonitorPanel extends JPanel {
                                 + "   |   TB: " + fields[3] + " ms   |   Uptime: " + fields[4] + "s");
                         summary.setToolTipText("Server khởi động: " + fields[5]);
                     } else if ("CLIENT".equals(row[0]) && fields.length == 8) {
-                        clients.addRow(fields); 
-                    }else if ("LOG".equals(row[0]) && fields.length == 5) {
+                        clients.addRow(fields);
+                    } else if ("LOG".equals(row[0]) && fields.length == 5) {
                         allLogs.add(fields);
                     }
                 }
@@ -166,9 +171,10 @@ final class ServerMonitorPanel extends JPanel {
     }
 
     private static JPanel section(String title, JTable table) {
-        JPanel panel = new JPanel(new BorderLayout(0, 8));
+        JPanel panel = UiTheme.surface();
+        panel.setLayout(new BorderLayout(0, 12));
         panel.add(new JLabel(title), BorderLayout.NORTH);
-        JScrollPane scroll = new JScrollPane(table);
+        JScrollPane scroll = UiTheme.scroll(table);
         scroll.setColumnHeaderView(table.getTableHeader());
         panel.add(scroll, BorderLayout.CENTER);
         return panel;

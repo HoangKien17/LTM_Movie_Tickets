@@ -29,14 +29,18 @@ final class TicketCheckInPanel extends JPanel {
         this.ready = ready;
         setBorder(BorderFactory.createEmptyBorder(24, 27, 24, 27));
         setBackground(UiTheme.BACKGROUND);
-        JPanel top = new JPanel(new BorderLayout(0, 12));
+        JPanel top = UiTheme.surface();
+        top.setLayout(new BorderLayout(0, 12));
         top.add(new JLabel("Nhập mã vé hoặc đọc ảnh QR — mỗi lần soát áp dụng cho toàn bộ đơn"),
                 BorderLayout.NORTH);
         input.setLineWrap(true);
         input.setWrapStyleWord(true);
         input.setFont(UiTheme.font(14, Font.PLAIN));
-        top.add(new JScrollPane(input), BorderLayout.CENTER);
+        input.setBackground(UiTheme.BACKGROUND);
+        input.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        top.add(UiTheme.scroll(input), BorderLayout.CENTER);
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        buttons.setOpaque(false);
         JButton image = UiTheme.secondary("Đọc ảnh QR");
         image.addActionListener(event -> readImage());
         JButton inspect = UiTheme.secondary("Kiểm tra vé");
@@ -53,7 +57,10 @@ final class TicketCheckInPanel extends JPanel {
         result.setWrapStyleWord(true);
         result.setFont(UiTheme.font(16, Font.PLAIN));
         result.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
-        add(new JScrollPane(result), BorderLayout.CENTER);
+        result.setText("SẴN SÀNG SOÁT VÉ\n\nNhập mã xác thực hoặc chọn ảnh QR để kiểm tra.\n"
+                + "Thông tin phim, suất chiếu và ghế sẽ xuất hiện tại đây.");
+        result.setForeground(UiTheme.PRIMARY);
+        add(UiTheme.scroll(result), BorderLayout.CENTER);
         input.getDocument().addDocumentListener(new DocumentListener() {
             public void insertUpdate(DocumentEvent e) {
                 changed();
