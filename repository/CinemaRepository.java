@@ -46,7 +46,7 @@ public final class CinemaRepository {
         String sql = "SELECT g.ma_ghe, CASE WHEN v.id IS NULL THEN 'free' ELSE 'taken' END "
                 + "FROM xuat_chieu x JOIN ghe g ON g.phong_chieu_id=x.phong_chieu_id "
                 + "LEFT JOIN ve v ON v.xuat_chieu_id=x.id AND v.ghe_id=g.id "
-                + "AND v.trang_thai='active' WHERE x.id=? ORDER BY LEFT(g.ma_ghe,1),CAST(SUBSTRING(g.ma_ghe,2) AS UNSIGNED)";
+                + "AND v.trang_thai IN ('held','active') WHERE x.id=? ORDER BY LEFT(g.ma_ghe,1),CAST(SUBSTRING(g.ma_ghe,2) AS UNSIGNED)";
         List<String[]> rows = new ArrayList<>();
         try (Connection c = CSDL.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, showId);
@@ -161,8 +161,10 @@ public final class CinemaRepository {
             try {
                 int showId;
                 try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT d.nguoi_dung_id,d.trang_thai,x.bat_dau,x.id,d.checked_in_at FROM don_dat_ve d "
-                        + "JOIN xuat_chieu x ON x.id=d.xuat_chieu_id WHERE d.id=? FOR UPDATE")) {
+                        "SELECT d.nguoi_dung_id,d.trang_thai,x.bat_dau,x.id,d.checked_in_at,"
+                        + "COALESCE(t.nha_cung_cap,''),COALESCE(t.trang_thai,'') FROM don_dat_ve d "
+                        + "JOIN xuat_chieu x ON x.id=d.xuat_chieu_id "
+                        + "LEFT JOIN thanh_toan t ON t.don_dat_ve_id=d.id WHERE d.id=? FOR UPDATE")) {
                     ps.setLong(1, bookingId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next() || (!admin && rs.getInt(1) != userId)) {
@@ -172,8 +174,15 @@ public final class CinemaRepository {
                         if (rs.getTimestamp(5) != null) {
                             throw new IllegalArgumentException("Đơn đã soát vé, không thể hủy");
                         }
+                        if ("pending_payment".equals(rs.getString(2))) {
+                            throw new IllegalArgumentException("Đơn đang chờ thanh toán; ghế sẽ tự giải phóng khi hết hạn");
+                        }
                         if (!"active".equals(rs.getString(2))) {
-                            throw new IllegalArgumentException("Đơn đặt vé đã hủy");
+                            throw new IllegalArgumentException("Đơn không còn hiệu lực");
+                        }
+                        if ("paid".equals(rs.getString(7)) && !"demo".equals(rs.getString(6))) {
+                            throw new IllegalArgumentException(
+                                    "Đơn đã thanh toán thật; cần hoàn tiền qua cổng thanh toán trước khi hủy");
                         }
                         if (!rs.getTimestamp(3).toLocalDateTime().isAfter(LocalDateTime.now())) {
                             throw new IllegalArgumentException("Suất chiếu đã bắt đầu");

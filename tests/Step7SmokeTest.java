@@ -14,7 +14,7 @@ import web.MovieClient;
 
 /**
  * Kiểm thử qua TCP Server thật. Cần hai tài khoản thường và một suất chiếu còn
- * ghế. Bài kiểm thử đặt một ghế rồi hủy trong phần dọn dẹp.
+ * ghế. Server kiểm thử phải chạy với PAYMENT_MODE=demo.
  */
 public final class Step7SmokeTest {
 
@@ -60,12 +60,13 @@ public final class Step7SmokeTest {
                 expectOk(observer.request("WATCH_SHOW;" + target.showId), "SEATS");
                 System.out.println("[3/7] Phim, suất chiếu và sơ đồ ghế: OK");
 
-                expectError(client1.request("BOOK_TICKET;" + target.showId + ";"
-                        + encode(target.seatCode + "," + target.seatCode)),
+                expectError(client1.request("CREATE_ORDER;" + target.showId + ";"
+                        + encode(target.seatCode + "," + target.seatCode) + ";" + encode("")),
                         "Một ghế bị lặp trong cùng yêu cầu phải bị từ chối");
                 System.out.println("[4/7] Kiểm tra ghế lặp: OK");
 
-                String bookCommand = "BOOK_TICKET;" + target.showId + ";" + encode(target.seatCode);
+                String bookCommand = "CREATE_ORDER;" + target.showId + ";" + encode(target.seatCode)
+                        + ";" + encode("");
                 CountDownLatch start = new CountDownLatch(1);
                 Future<List<String>> first = pool.submit(() -> {
                     start.await();
@@ -78,8 +79,8 @@ public final class Step7SmokeTest {
                 start.countDown();
                 List<String> result1 = first.get(30, TimeUnit.SECONDS);
                 List<String> result2 = second.get(30, TimeUnit.SECONDS);
-                boolean firstWon = isOk(result1, "BOOKED");
-                boolean secondWon = isOk(result2, "BOOKED");
+                boolean firstWon = isOk(result1, "PAYMENT");
+                boolean secondWon = isOk(result2, "PAYMENT");
                 check(firstWon != secondWon,
                         "Hai Client đặt cùng một ghế: phải đúng một thành công. Kết quả: "
                         + result1 + " / " + result2);
@@ -88,9 +89,12 @@ public final class Step7SmokeTest {
                 winner = firstWon ? client1 : client2;
                 MovieClient loser = firstWon ? client2 : client1;
                 List<String> won = firstWon ? result1 : result2;
-                bookingId = Long.parseLong(won.get(0).split(";", -1)[2]);
+                bookingId = Long.parseLong(decodeRows(won, "PAYMENT").get(0)[0]);
+                expectOk(winner.request("DEMO_CONFIRM_PAYMENT;" + bookingId), "PAID");
                 check(Integer.valueOf(target.showId).equals(changes.poll(5, TimeUnit.SECONDS)),
-                        "Client đang nhàn rỗi phải nhận push sau khi đặt vé");
+                        "Client đang nhàn rỗi phải nhận push khi ghế được giữ");
+                check(Integer.valueOf(target.showId).equals(changes.poll(5, TimeUnit.SECONDS)),
+                        "Client đang nhàn rỗi phải nhận push khi thanh toán thành công");
                 // Round-trip sau hai kết quả đặt vé: mọi event trước đó đã được reader xử lý.
                 observer.request("GET_SEAT_MAP;" + target.showId);
                 check(changes.isEmpty(), "Yêu cầu đặt vé thất bại không được phát thêm event");
@@ -213,6 +217,20 @@ public final class Step7SmokeTest {
 
     private static boolean isOk(List<String> lines, String kind) {
         return !lines.isEmpty() && lines.get(0).startsWith("OK;" + kind);
+    }
+
+    private static java.util.ArrayList<String[]> decodeRows(List<String> lines, String kind) {
+        expectOk(lines, kind);
+        java.util.ArrayList<String[]> rows = new java.util.ArrayList<>();
+        for (int i = 1; i < lines.size(); i++) {
+            String[] encoded = lines.get(i).split(";", -1);
+            String[] row = new String[encoded.length - 1];
+            for (int j = 0; j < row.length; j++) {
+                row[j] = Protocol.decode(encoded[j + 1]);
+            }
+            rows.add(row);
+        }
+        return rows;
     }
 
     private static void expectOk(List<String> lines, String kind) {

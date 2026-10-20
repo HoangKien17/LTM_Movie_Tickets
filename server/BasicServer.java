@@ -33,6 +33,7 @@ import service.BasicService;
 import service.CinemaService;
 import service.PosterStorage;
 import service.TicketService;
+import service.PaymentService;
 
 /**
  * TCP Server: giữ phiên đăng nhập và chuyển yêu cầu đến Service.
@@ -45,14 +46,16 @@ public final class BasicServer {
     private final TicketService tickets = new TicketService();
     private final BasicService basic = new BasicService();
     private final CinemaService cinema = new CinemaService();
+    private final PaymentService payments = new PaymentService();
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
 
     public static void main(String[] args) {
-        BasicServer app = new BasicServer();
         try {
+            BasicServer app = new BasicServer();
             app.basic.verifyReady();
             app.cinema.rooms();
             app.tickets.verifyReady();
+            app.payments.verifyReady();
             app.serve();
         } catch (SQLException ex) {
             System.err.println("MySQL chưa sẵn sàng. Hãy chạy database/schema.sql "
@@ -62,11 +65,20 @@ public final class BasicServer {
         } catch (IOException ex) {
             System.err.println("Không thể mở cổng " + PORT + ": " + ex.getMessage());
             System.exit(1);
+        } catch (IllegalStateException ex) {
+            System.err.println("Cấu hình thanh toán không hợp lệ: " + ex.getMessage());
+            System.exit(1);
         }
     }
 
     private void serve() throws IOException {
         ExecutorService pool = Executors.newCachedThreadPool();
+        java.util.concurrent.ScheduledExecutorService paymentPoller = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "payment-poller");
+            t.setDaemon(true);
+            return t;
+        });
+        paymentPoller.scheduleWithFixedDelay(this::synchronizePayments, 2, 4, java.util.concurrent.TimeUnit.SECONDS);
         try (ServerSocket listener = new ServerSocket(PORT)) {
             System.out.println("Galaxy Cinema Server đã sẵn sàng tại cổng " + PORT);
             while (true) {
@@ -74,7 +86,18 @@ public final class BasicServer {
                 pool.execute(() -> handleClient(socket));
             }
         } finally {
+            paymentPoller.shutdownNow();
             pool.shutdown();
+        }
+    }
+
+    private void synchronizePayments() {
+        try {
+            for (int showId : payments.synchronizePending()) {
+                seatsChanged(showId);
+        
+            }} catch (SQLException ex) {
+            System.err.println("Không đồng bộ được thanh toán: " + ex.getMessage());
         }
     }
 
@@ -137,6 +160,17 @@ public final class BasicServer {
                     session.watchedShowId = 0;
                     session.user = null;
                     return one("OK;LOGOUT");
+                case "GET_PROFILE":
+                    count(p, 1);
+                    signedIn(session);
+                    session.user = basic.profile(session.user.getId());
+                    return rows("PROFILE", "PROFILE", Collections.singletonList(profileRow(session.user)));
+                case "UPDATE_PROFILE":
+                    count(p, 6);
+                    signedIn(session);
+                    session.user = basic.updateProfile(session.user.getId(), dec(p[1]), dec(p[2]), dec(p[3]),
+                            dec(p[4]), dec(p[5]));
+                    return rows("PROFILE", "PROFILE", Collections.singletonList(profileRow(session.user)));
                 case "GET_MOVIES":
                     count(p, 1);
                     signedIn(session);
@@ -172,13 +206,31 @@ public final class BasicServer {
                     count(p, 2);
                     signedIn(session);
                     return rows("SEATS", "SEAT", cinema.seats(number(p[1])));
-                case "BOOK_TICKET":
-                    count(p, 3);
+                case "GET_PRODUCTS":
+                    count(p, 1);
                     signedIn(session);
-                    int bookedShowId = number(p[1]);
-                    long bookingId = cinema.book(session.user.getId(), bookedShowId, dec(p[2]));
-                    seatsChanged(bookedShowId);
-                    return one("OK;BOOKED;" + bookingId);
+                    return rows("PRODUCTS", "PRODUCT", payments.products());
+                case "CREATE_ORDER":
+                    count(p, 4);
+                    signedIn(session);
+                    int paymentShowId = number(p[1]);
+                    String[] payment = payments.create(session.user.getId(), paymentShowId, dec(p[2]), dec(p[3]));
+                    seatsChanged(paymentShowId); // Các client khác thấy ghế đang được giữ.
+                    return rows("PAYMENT", "PAYMENT", Collections.singletonList(payment));
+                case "GET_PAYMENT":
+                    count(p, 2);
+                    signedIn(session);
+                    return rows("PAYMENT", "PAYMENT", payments.payment(session.user.getId(), longNumber(p[1])));
+                case "DEMO_CONFIRM_PAYMENT":
+                    count(p, 2);
+                    signedIn(session);
+                    int paidShowId = payments.demoConfirm(session.user.getId(), longNumber(p[1]));
+                    if (paidShowId > 0) {
+                        seatsChanged(paidShowId);
+                    }
+                    return one("OK;PAID;" + p[1]);
+                case "BOOK_TICKET":
+                    return error("Client cũ không hỗ trợ thanh toán. Hãy cập nhật ứng dụng.");
                 case "GET_BOOKINGS":
                     count(p, 1);
                     signedIn(session);
@@ -245,6 +297,24 @@ public final class BasicServer {
                     count(p, 1);
                     admin(session);
                     return rows("REVENUE", "MOVIE_REVENUE", cinema.revenueByMovie());
+                case "ADMIN_GET_PRODUCTS":
+                    count(p, 1);
+                    admin(session);
+                    return rows("PRODUCTS", "PRODUCT", payments.allProducts());
+                case "ADMIN_ADD_PRODUCT":
+                    count(p, 4);
+                    admin(session);
+                    return one("OK;ADDED;" + payments.addProduct(dec(p[1]), p[2], p[3]));
+                case "ADMIN_UPDATE_PRODUCT":
+                    count(p, 6);
+                    admin(session);
+                    payments.updateProduct(number(p[1]), dec(p[2]), p[3], p[4], p[5]);
+                    return one("OK;UPDATED");
+                case "ADMIN_DELETE_PRODUCT":
+                    count(p, 2);
+                    admin(session);
+                    payments.deleteProduct(number(p[1]));
+                    return one("OK;DELETED");
                 case "ADMIN_ADD_MOVIE":
                     if (p.length != 5 && p.length != 6) {
                         throw new IllegalArgumentException("Số tham số không hợp lệ");
@@ -329,6 +399,11 @@ public final class BasicServer {
             lines.add(line.toString());
         }
         return lines;
+    }
+
+    private static String[] profileRow(NguoiDung user) {
+        return new String[]{Integer.toString(user.getId()), user.getHoTen(), user.getGmail(),
+            user.getSoDienThoai(), user.getVaiTro()};
     }
 
     private static void count(String[] p, int expected) {

@@ -13,10 +13,13 @@ Tên repository `LTM_Movie_Tickets` và database `movie_tickets_ltm` được gi
 - Đăng ký, đăng nhập bằng email hoặc số điện thoại và đăng xuất.
 - Xem danh sách phim, mô tả, poster và các suất chiếu.
 - Xem sơ đồ ghế còn trống hoặc đã được đặt; chọn tối đa 10 ghế trong một lần đặt.
-- Đặt vé, xem danh sách/chi tiết đơn của mình và hủy đơn.
+- Chọn ghế, mua thêm đồ ăn/nước uống và thanh toán bằng QR đúng tổng tiền vé + sản phẩm.
+- Ghế được giữ tối đa 10 phút trong lúc thanh toán; chỉ phát hành vé sau khi giao dịch thành công.
+- Đặt vé, xem danh sách/chi tiết đơn của mình và hủy đơn demo. Đơn đã thanh toán thật cần hoàn tiền trước khi hủy.
 - Xem vé QR ngay sau khi đặt hoặc từ **Vé của tôi → Vé QR**; lưu QR thành ảnh PNG.
 - Sơ đồ ghế hiển thị đúng hàng/số ghế, có màn chiếu và khoảng lối đi giữa.
 - Ghế tự cập nhật khi client khác đặt/hủy, giữ các lựa chọn vẫn còn trống.
+- Mở menu tài khoản ở biểu tượng cạnh lời chào để xem/cập nhật họ tên, email, số điện thoại và mật khẩu.
 
 **Nhân viên soát vé (staff) và quản trị viên**
 
@@ -32,9 +35,10 @@ Tên repository `LTM_Movie_Tickets` và database `movie_tickets_ltm` được gi
 - Xem người dùng, tất cả đơn vé, hủy đơn và xem thống kê.
 - Mở **Giám sát server** để xem kết nối, thời điểm kết nối, số yêu cầu, thời gian xử lý và nhật ký.
   Màn hình tự làm mới mỗi 2 giây khi đang mở; chỉ admin có quyền truy cập.
+- Xem, thêm, sửa, bật lại hoặc ngừng bán đồ ăn và nước uống. Ngừng bán không xóa lịch sử của đơn cũ.
 - Xem báo cáo theo phim gồm số vé còn hiệu lực và doanh thu; các đơn/vé đã hủy không được tính vào báo cáo.
 
-Ứng dụng hiện ghi nhận đơn đặt vé trong database; **chưa tích hợp thanh toán trực tuyến**.
+Thanh toán có hai chế độ: `demo` để phát triển không chuyển tiền và `payos` để nhận thanh toán thật vào tài khoản ngân hàng đã liên kết với kênh payOS. Server giữ khóa bí mật và tự kiểm tra giao dịch; Client không được tự xác nhận đã trả tiền.
 
 ## Kiến trúc và luồng xử lý
 
@@ -57,7 +61,7 @@ Giao thức dùng một dòng cho mỗi yêu cầu, các trường được ngă
 - JDK **11 trở lên** (`java -version` và `javac -version`).
 - MySQL Server đang chạy và một tài khoản MySQL có quyền tạo database/bảng khi khởi tạo.
 - Windows PowerShell nếu dùng các lệnh bên dưới. Repository đã có `lib/mysql-connector-j-9.7.0.jar`, không cần tải thêm JDBC driver.
-- QR dùng ZXing Core 3.5.4, đã có trong lib/zxing-core-3.5.4.jar cùng giấy phép Apache 2.0.
+- QR dùng ZXing Core 3.5.4; JSON payOS dùng Gson 2.13.2. Các JAR và giấy phép đã có trong `lib/`.
   Khi biên dịch cần thêm -cp 'lib/*' như lệnh bên dưới.
 
 Các lệnh sau được chạy **tại thư mục gốc dự án** (nơi có `database/`, `web/`, `server/` và `README.md`).
@@ -95,6 +99,10 @@ Dừng Server, mở database/migrate_v2.sql trong MySQL Workbench và chạy to�
 Script bổ sung token QR, thời điểm/người soát vé và quyền staff, giữ nguyên dữ liệu.
 Có thể chạy lại migration. Database mới tạo bằng schema.sql đã có cấu trúc này.
 
+Sau đó chạy `database/migrate_v3_payment_food.sql`. Migration V3 thêm sản phẩm, chi tiết đồ ăn,
+giao dịch thanh toán và trạng thái giữ ghế. Có thể chạy lại script. Người cài mới chỉ cần chạy
+`database/schema.sql` vì schema mới đã chứa cả V2 và V3.
+
 Hướng dẫn đầy đủ, danh sách file và kiểm thử: [HUONG_DAN_V2.md](HUONG_DAN_V2.md).
 
 ### 3. Cấu hình kết nối MySQL cho Server
@@ -105,9 +113,24 @@ Tạo file `.env` tại thư mục gốc dự án:
 MOVIE_DB_URL=jdbc:mysql://127.0.0.1:3306/movie_tickets_ltm
 MOVIE_DB_USER=root
 MOVIE_DB_PASSWORD=mat_khau_mysql_cua_ban
+PAYMENT_MODE=demo
 ```
 
 Thay tên đăng nhập và mật khẩu bằng thông tin MySQL trên máy chạy Server. `.env` đã được đưa vào `.gitignore`, vì vậy không commit file chứa mật khẩu. Các biến môi trường `MOVIE_DB_URL`, `MOVIE_DB_USER`, `MOVIE_DB_PASSWORD` trong phiên chạy Server được ưu tiên hơn giá trị trong `.env`. Nếu sửa `.env`, hãy khởi động lại Server.
+
+Để nhận tiền thật, tạo và liên kết kênh thanh toán tại payOS rồi đổi phần thanh toán trong `.env`:
+
+```dotenv
+PAYMENT_MODE=payos
+PAYOS_CLIENT_ID=client_id_cua_kenh_thanh_toan
+PAYOS_API_KEY=api_key_cua_kenh_thanh_toan
+PAYOS_CHECKSUM_KEY=checksum_key_cua_kenh_thanh_toan
+PAYOS_RETURN_URL=https://payos.vn
+PAYOS_CANCEL_URL=https://payos.vn
+```
+
+Tiền được chuyển vào tài khoản ngân hàng liên kết với kênh payOS; không ghi số tài khoản vào mã nguồn.
+Ba khóa trên chỉ đặt ở máy Server và không commit `.env`. Xem [HUONG_DAN_V3.md](HUONG_DAN_V3.md).
 
 ### 4. Biên dịch
 
@@ -163,8 +186,8 @@ java -cp 'out;lib/*' web.BasicClientUI
 ## Kịch bản trình diễn nhanh
 
 1. Khởi động Server và mở hai Client; đăng nhập bằng hai tài khoản khác nhau.
-2. Chọn cùng một suất chiếu và cùng một ghế ở hai Client, sau đó gửi yêu cầu đặt gần như đồng thời. Chỉ một Client đặt thành công.
-3. Tài khoản đặt thành công mở **Vé của tôi**, xem chi tiết rồi hủy đơn. Tải lại sơ đồ ghế để thấy ghế trống trở lại.
+2. Chọn ghế, thêm bắp/nước và tạo thanh toán. Client khác thấy ghế chuyển sang đang giữ ngay lập tức.
+3. Ở chế độ demo bấm **Giả lập đã thanh toán**; ở chế độ payOS quét QR bằng ứng dụng ngân hàng. Khi Server xác nhận giao dịch, vé QR xuất hiện và mọi Client được cập nhật.
 4. Đăng nhập tài khoản admin để xem danh sách đơn, thống kê và báo cáo doanh thu theo phim.
 
 ## Ảnh giao diện và poster phim
@@ -176,11 +199,12 @@ java -cp 'out;lib/*' web.BasicClientUI
 
 ## Kiểm thử luồng đặt vé
 
-`tests.Step7SmokeTest` chạy qua **TCP Server thật** và kiểm tra đăng nhập, phân quyền, đọc phim/suất/ghế, hai Client cùng đặt một ghế, xem/hủy đơn và đăng xuất. Trước khi chạy, cần:
+`tests.Step7SmokeTest` chạy qua **TCP Server thật** và kiểm tra đăng nhập, phân quyền, đọc phim/suất/ghế, hai Client cùng giữ một ghế, thanh toán demo, xem/hủy đơn và đăng xuất. Trước khi chạy, cần:
 
 - Server đang chạy và kết nối được MySQL.
 - Hai tài khoản **khác nhau**, cùng có vai trò `user`.
 - Ít nhất một suất chiếu trong tương lai còn ghế trống.
+- Server chạy với `PAYMENT_MODE=demo`.
 
 Trong Terminal PowerShell mới, đặt bốn biến môi trường cho hai tài khoản rồi chạy:
 

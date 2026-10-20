@@ -43,11 +43,14 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -515,10 +518,20 @@ public final class BasicClientUI extends JFrame {
         titleBox.add(Box.createVerticalStrut(3));
         titleBox.add(pageSubtitle);
         header.add(titleBox, BorderLayout.WEST);
-        JPanel userBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        JPanel userBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 9, 0));
         userBox.setOpaque(false);
         userBox.add(userLabel);
-        userBox.add(action("Đăng xuất", this::logout, "subtle"));
+        AvatarButton avatar = new AvatarButton();
+        JPopupMenu accountMenu = new JPopupMenu();
+        JMenuItem profile = new JMenuItem("Thông tin cá nhân");
+        profile.addActionListener(event -> openProfile());
+        JMenuItem signOut = new JMenuItem("Đăng xuất");
+        signOut.addActionListener(event -> logout());
+        accountMenu.add(profile);
+        accountMenu.addSeparator();
+        accountMenu.add(signOut);
+        avatar.addActionListener(event -> accountMenu.show(avatar, 0, avatar.getHeight() + 3));
+        userBox.add(avatar);
         header.add(userBox, BorderLayout.EAST);
         return header;
     }
@@ -627,6 +640,7 @@ public final class BasicClientUI extends JFrame {
         actions.setOpaque(false);
         actions.add(action("Làm mới", this::loadBookings, "secondary"));
         actions.add(action("Chi tiết", this::ticketDetail, "subtle"));
+        actions.add(action("Thanh toán", this::openSelectedPayment, "primary"));
         actions.add(action("Vé QR", () -> {
             String id = selectedBookingId();
             if (id != null) {
@@ -649,7 +663,7 @@ public final class BasicClientUI extends JFrame {
 
     private JPanel buildAdmin() {
         JPanel page = page();
-        JPanel groups = new JPanel(new GridLayout(2, 2, 14, 14));
+        JPanel groups = new JPanel(new GridLayout(2, 3, 14, 14));
         groups.setOpaque(false);
         groups.add(adminGroup("Quản lý phim", "Nội dung đang chiếu",
                 action("Danh sách", this::adminMovies, "subtle"),
@@ -666,6 +680,11 @@ public final class BasicClientUI extends JFrame {
                 action("Thêm", this::adminAddShow, "secondary"),
                 action("Sửa", this::adminUpdateShow, "subtle"),
                 action("Xóa", () -> adminDelete("ADMIN_DELETE_SHOW", "Mã suất chiếu", this::adminShows), "danger")));
+        groups.add(adminGroup("Đồ ăn & nước uống", "Danh mục bán kèm",
+                action("Danh sách", this::adminProducts, "subtle"),
+                action("Thêm", this::adminAddProduct, "secondary"),
+                action("Sửa", this::adminUpdateProduct, "subtle"),
+                action("Ngừng bán", this::adminDeleteProduct, "danger")));
         groups.add(adminGroup("Báo cáo", "Người dùng, đơn vé và doanh thu",
                 action("Người dùng", this::adminUsers, "subtle"),
                 action("Đơn vé", this::adminBookings, "subtle"),
@@ -843,6 +862,63 @@ public final class BasicClientUI extends JFrame {
             resetSession();
             screenLayout.show(screens, "LOGIN");
             status.setText("Đã đăng xuất");
+        });
+    }
+
+    private void openProfile() {
+        send("GET_PROFILE", lines -> {
+            List<String[]> profiles = rows(lines, "PROFILE", "PROFILE", 5);
+            if (profiles == null || profiles.isEmpty()) {
+                return;
+            }
+            String[] profile = profiles.get(0);
+            JTextField name = UiTheme.field(26);
+            name.setText(profile[1]);
+            JTextField email = UiTheme.field(26);
+            email.setText(profile[2]);
+            JTextField phone = UiTheme.field(26);
+            phone.setText(profile[3]);
+            JPasswordField current = UiTheme.password(26), replacement = UiTheme.password(26), confirm = UiTheme.password(26);
+            JPanel form = new JPanel(new GridLayout(0, 2, 10, 10));
+            form.setBorder(new EmptyBorder(12, 10, 12, 10));
+            form.add(label("Mã tài khoản", 13, Font.PLAIN, UiTheme.MUTED));
+            form.add(label("#" + profile[0], 13, Font.BOLD, UiTheme.TEXT));
+            form.add(label("Vai trò", 13, Font.PLAIN, UiTheme.MUTED));
+            form.add(label(profile[4], 13, Font.BOLD, UiTheme.TEXT));
+            form.add(label("Họ và tên", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(name);
+            form.add(label("Email", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(email);
+            form.add(label("Số điện thoại", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(phone);
+            form.add(label("Mật khẩu hiện tại", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(current);
+            form.add(label("Mật khẩu mới (có thể để trống)", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(replacement);
+            form.add(label("Nhập lại mật khẩu mới", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(confirm);
+            if (JOptionPane.showConfirmDialog(this, form, "Thông tin cá nhân",
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+                return;
+            }
+            String oldPassword = new String(current.getPassword()), newPassword = new String(replacement.getPassword());
+            if (oldPassword.isEmpty()) {
+                showError("Hãy nhập mật khẩu hiện tại để lưu thay đổi");
+                return;
+            }
+            if (!newPassword.equals(new String(confirm.getPassword()))) {
+                showError("Mật khẩu mới nhập lại không khớp");
+                return;
+            }
+            send("UPDATE_PROFILE;" + enc(name.getText().trim()) + ";" + enc(email.getText().trim()) + ";"
+                    + enc(phone.getText().trim()) + ";" + enc(oldPassword) + ";" + enc(newPassword), response -> {
+                List<String[]> updated = rows(response, "PROFILE", "PROFILE", 5);
+                if (updated == null || updated.isEmpty()) {
+                    return;
+                }
+                userLabel.setText("Xin chào, " + updated.get(0)[1]);
+                info("Đã cập nhật thông tin cá nhân");
+            });
         });
     }
 
@@ -1111,21 +1187,28 @@ public final class BasicClientUI extends JFrame {
             showError("Mỗi lần đặt tối đa 10 ghế");
             return;
         }
-        int answer = JOptionPane.showConfirmDialog(this,
-                "Đặt " + String.join(", ", codes) + " với tổng tiền " + totalPrice.getText() + "?",
-                "Xác nhận đặt vé", JOptionPane.YES_NO_OPTION);
-        if (answer != JOptionPane.YES_OPTION) {
-            return;
-        }
-        send("BOOK_TICKET;" + showId + ";" + enc(String.join(",", codes)), lines -> {
-            if (!isOk(lines, "BOOKED")) {
-                loadSeats();
+        send("GET_PRODUCTS", lines -> {
+            List<String[]> products = rows(lines, "PRODUCTS", "PRODUCT", 5);
+            if (products == null) {
                 return;
             }
-            String[] p = lines.get(0).split(";", -1);
-            pendingElectronicTicket = p.length > 2 ? p[2] : null;
-            info("Đặt vé thành công" + (p.length > 2 ? " — mã đơn #" + p[2] : ""));
-            navigate("BOOKINGS");
+            String items = FoodSelectionDialog.choose(this, products);
+            if (items == null) {
+                return;
+            }
+            if (JOptionPane.showConfirmDialog(this, "Giữ ghế " + String.join(", ", codes)
+                    + " trong 10 phút và tạo mã thanh toán?", "Xác nhận đơn",
+                    JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+                return;
+            }
+            send("CREATE_ORDER;" + showId + ";" + enc(String.join(",", codes)) + ";" + enc(items), response -> {
+                List<String[]> payments = rows(response, "PAYMENT", "PAYMENT", 8);
+                if (payments == null || payments.size() != 1) {
+                    loadSeats();
+                    return;
+                }
+                showPayment(payments.get(0));
+            });
         });
     }
 
@@ -1161,10 +1244,40 @@ public final class BasicClientUI extends JFrame {
 
     private void electronicTicket(String id) {
         send("GET_E_TICKET;" + id, lines -> {
-            List<String[]> data = rows(lines, "E_TICKET", "TICKET", 8);
+            List<String[]> data = rows(lines, "E_TICKET", "TICKET", 10);
             if (data != null && data.size() == 1) {
                 ElectronicTicketDialog.show(this, data.get(0));
             }
+        });
+    }
+
+    private void openSelectedPayment() {
+        String id = selectedBookingId();
+        if (id == null) {
+            return;
+        }
+        send("GET_PAYMENT;" + id, lines -> {
+            List<String[]> data = rows(lines, "PAYMENT", "PAYMENT", 8);
+            if (data != null && data.size() == 1) {
+                showPayment(data.get(0));
+            }
+        });
+    }
+
+    private void showPayment(String[] payment) {
+        if ("paid".equals(payment[2])) {
+            pendingElectronicTicket = payment[0];
+            navigate("BOOKINGS");
+            return;
+        }
+        if (!"pending".equals(payment[2])) {
+            showError("Đơn không còn chờ thanh toán");
+            return;
+        }
+        PaymentDialog.show(this, payment, this::send, () -> {
+            pendingElectronicTicket = payment[0];
+            info("Thanh toán thành công — đơn #" + payment[0]);
+            navigate("BOOKINGS");
         });
     }
 
@@ -1238,6 +1351,65 @@ public final class BasicClientUI extends JFrame {
     private void adminRooms() {
         adminList("ADMIN_GET_ROOMS", "ROOMS", "ROOM",
                 new String[]{"Mã", "Tên phòng", "Số ghế"}, 3);
+    }
+
+    private void adminProducts() {
+        send("ADMIN_GET_PRODUCTS", lines -> {
+            List<String[]> data = rows(lines, "PRODUCTS", "PRODUCT", 5);
+            if (data == null) {
+                return;
+            }
+            List<Object[]> visible = new ArrayList<>();
+            for (String[] row : data) {
+                visible.add(new Object[]{row[0], row[1],
+                    "food".equals(row[2]) ? "Đồ ăn" : "Nước uống", formatMoney(row[3]),
+                    "1".equals(row[4]) ? "Đang bán" : "Ngừng bán"});
+            }
+            setAdminTable("Đồ ăn & nước uống", new String[]{"Mã", "Tên sản phẩm", "Loại", "Giá", "Trạng thái"}, visible);
+        });
+    }
+
+    private void adminAddProduct() {
+        String[] v = promptProduct(false);
+        if (v == null) {
+            return;
+        }
+        send("ADMIN_ADD_PRODUCT;" + enc(v[0]) + ";" + v[1] + ";" + v[2], lines -> {
+            if (isOk(lines, "ADDED")) {
+                info("Đã thêm sản phẩm");
+                adminProducts();
+            }
+        });
+    }
+
+    private void adminUpdateProduct() {
+        String[] v = promptProduct(true);
+        if (v == null) {
+            return;
+        }
+        send("ADMIN_UPDATE_PRODUCT;" + v[0] + ";" + enc(v[1]) + ";" + v[2] + ";" + v[3] + ";" + v[4], lines -> {
+            if (isOk(lines, "UPDATED")) {
+                info("Đã cập nhật sản phẩm");
+                adminProducts();
+            }
+        });
+    }
+
+    private void adminDeleteProduct() {
+        String id = JOptionPane.showInputDialog(this, "Mã sản phẩm cần ngừng bán");
+        if (id == null || id.trim().isEmpty()) {
+            return;
+        }
+        if (JOptionPane.showConfirmDialog(this, "Ngừng bán sản phẩm #" + id.trim() + "?",
+                "Xác nhận", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+            return;
+        }
+        send("ADMIN_DELETE_PRODUCT;" + id.trim(), lines -> {
+            if (isOk(lines, "DELETED")) {
+                info("Đã ngừng bán sản phẩm #" + id.trim());
+                adminProducts();
+            }
+        });
     }
 
     private void adminShows() {
@@ -1494,6 +1666,38 @@ public final class BasicClientUI extends JFrame {
             values[i] = fields[i].getText().trim();
         }
         return values;
+    }
+
+    private String[] promptProduct(boolean updating) {
+        JPanel form = new JPanel(new GridLayout(0, 2, 10, 10));
+        form.setBorder(new EmptyBorder(14, 10, 14, 10));
+        JTextField id = UiTheme.field(24), name = UiTheme.field(24), price = UiTheme.field(24);
+        JComboBox<String> type = new JComboBox<>(new String[]{"Đồ ăn", "Nước uống"});
+        JComboBox<String> active = new JComboBox<>(new String[]{"Đang bán", "Ngừng bán"});
+        if (updating) {
+            form.add(label("Mã sản phẩm", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(id);
+        }
+        form.add(label("Tên sản phẩm", 13, Font.PLAIN, UiTheme.TEXT));
+        form.add(name);
+        form.add(label("Loại", 13, Font.PLAIN, UiTheme.TEXT));
+        form.add(type);
+        form.add(label("Giá bán", 13, Font.PLAIN, UiTheme.TEXT));
+        form.add(price);
+        if (updating) {
+            form.add(label("Trạng thái", 13, Font.PLAIN, UiTheme.TEXT));
+            form.add(active);
+        }
+        if (JOptionPane.showConfirmDialog(this, form, updating ? "Sửa sản phẩm" : "Thêm sản phẩm",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            return null;
+        }
+        String kind = type.getSelectedIndex() == 0 ? "food" : "drink";
+        if (updating) {
+            return new String[]{id.getText().trim(), name.getText().trim(), kind,
+                price.getText().trim(), active.getSelectedIndex() == 0 ? "1" : "0"};
+        }
+        return new String[]{name.getText().trim(), kind, price.getText().trim()};
     }
 
     private MovieForm promptMovie(String title, String... labels) {
@@ -1782,7 +1986,7 @@ public final class BasicClientUI extends JFrame {
         return value == null ? "" : value.replace('T', ' ');
     }
 
-    private static String formatMoney(String value) {
+    static String formatMoney(String value) {
         try {
             NumberFormat format = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
             format.setMaximumFractionDigits(2);
@@ -1793,7 +1997,16 @@ public final class BasicClientUI extends JFrame {
     }
 
     private static String statusText(String value) {
-        return "active".equals(value) ? "Còn hiệu lực" : "Đã hủy";
+        switch (value) {
+            case "active":
+                return "Đã thanh toán";
+            case "pending_payment":
+                return "Chờ thanh toán";
+            case "expired":
+                return "Hết hạn";
+            default:
+                return "Đã hủy";
+        }
     }
 
     private static String enc(String value) {
@@ -1898,6 +2111,34 @@ public final class BasicClientUI extends JFrame {
         @Override
         public boolean getScrollableTracksViewportHeight() {
             return false;
+        }
+    }
+
+    /**
+     * Nút tài khoản tự vẽ để không phụ thuộc file ảnh hoặc font emoji.
+     */
+    private static final class AvatarButton extends JButton {
+
+        AvatarButton() {
+            setPreferredSize(new Dimension(38, 38));
+            setToolTipText("Mở menu tài khoản");
+            setBorderPainted(false);
+            setContentAreaFilled(false);
+            setFocusPainted(false);
+            setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(getModel().isRollover() ? UiTheme.PRIMARY : UiTheme.PRIMARY_PALE);
+            g.fillOval(1, 1, getWidth() - 2, getHeight() - 2);
+            g.setColor(getModel().isRollover() ? Color.WHITE : UiTheme.PRIMARY);
+            int cx = getWidth() / 2;
+            g.fillOval(cx - 5, 8, 10, 10);
+            g.fillRoundRect(cx - 9, 20, 18, 11, 9, 9);
+            g.dispose();
         }
     }
 
