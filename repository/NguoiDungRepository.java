@@ -1,13 +1,12 @@
 package repository;
 
-import model.NguoiDung;
-import mysql.CSDL;
-
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import model.NguoiDung;
+import mysql.CSDL;
 
 /**
  * Chỉ lớp này truy vấn bảng nguoi_dung cho luồng cơ bản.
@@ -15,8 +14,10 @@ import java.sql.Statement;
 public final class NguoiDungRepository {
 
     public NguoiDung findByLogin(String login) throws SQLException {
+        // Database dùng collation *_ci cho dữ liệu tiếng Việt, nên phải ép so sánh
+        // nhị phân riêng tại bước đăng nhập để email phân biệt chữ hoa/chữ thường.
         String sql = "SELECT id, ho_ten, gmail, so_dien_thoai, mat_khau, vai_tro "
-                + "FROM nguoi_dung WHERE gmail = ? OR so_dien_thoai = ? LIMIT 1";
+                + "FROM nguoi_dung WHERE BINARY gmail = BINARY ? OR so_dien_thoai = ? LIMIT 1";
         try (Connection conn = CSDL.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, login);
             ps.setString(2, login);
