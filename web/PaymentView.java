@@ -78,12 +78,22 @@ final class PaymentView {
         columns.add(info);
         UiTheme.RoundedPanel scan = UiTheme.surface();
         scan.setLayout(new BorderLayout(0, 12));
+        scan.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createDashedBorder(UiTheme.PRIMARY, 1.4f, 5f, 3f, false),
+                BorderFactory.createEmptyBorder(16, 16, 16, 16)));
         boolean isDemo = "demo".equals(payment[6]);
         JLabel method = new JLabel(isDemo ? "DEMO • KHÔNG CHUYỂN TIỀN" : "QUÉT QR BẰNG ỨNG DỤNG NGÂN HÀNG",
                 SwingConstants.CENTER);
         method.setFont(UiTheme.font(12, Font.BOLD));
         method.setForeground(isDemo ? UiTheme.GOLD : UiTheme.PRIMARY);
-        scan.add(method, BorderLayout.NORTH);
+        JPanel ticketHeading = new JPanel(new GridLayout(2, 1, 0, 3));
+        ticketHeading.setOpaque(false);
+        JLabel ticket = new JLabel("GALAXY CINEMA  •  THANH TOÁN QR", SwingConstants.CENTER);
+        ticket.setForeground(UiTheme.PRIMARY);
+        ticket.setFont(UiTheme.font(14, Font.BOLD));
+        ticketHeading.add(ticket);
+        ticketHeading.add(method);
+        scan.add(ticketHeading, BorderLayout.NORTH);
         qr.setHorizontalAlignment(SwingConstants.CENTER);
         qr.setIcon(new ImageIcon(QrImages.encode(payment[3], 300)));
         scan.add(qr, BorderLayout.CENTER);
@@ -184,8 +194,8 @@ final class PaymentView {
                 return;
             }
             if (!lines.isEmpty() && lines.get(0).startsWith("OK;PAID;")) {
-                refresh(); 
-            }else {
+                refresh();
+            } else {
                 error.setText("Chưa xác nhận được. Hãy kiểm tra lại.");
             }
         });

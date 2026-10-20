@@ -2,6 +2,7 @@ package web;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.print.PrinterJob;
 import java.io.*;
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -99,9 +100,41 @@ final class ElectronicTicketDialog {
                     JOptionPane.showMessageDialog(dialog, "Không lưu được ảnh QR", "Lỗi", JOptionPane.ERROR_MESSAGE);
                 }
             });
-            bottom.add(save, BorderLayout.EAST);
+            JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 7, 0));
+            actions.setOpaque(false);
+            actions.add(save);
+            JButton print = UiTheme.secondary("In vé");
+            print.addActionListener(event -> printTicket(root, dialog));
+            actions.add(print);
+            bottom.add(actions, BorderLayout.EAST);
             root.add(bottom, BorderLayout.SOUTH);
         }
         return root;
+    }
+
+    private static void printTicket(JPanel ticket, Component parent) {
+        PrinterJob job = PrinterJob.getPrinterJob();
+        job.setJobName("Vé Galaxy Cinema");
+        job.setPrintable((graphics, pageFormat, pageIndex) -> {
+            if (pageIndex > 0) {
+                return java.awt.print.Printable.NO_SUCH_PAGE;
+            }
+            Graphics2D g = (Graphics2D) graphics.create();
+            double scale = Math.min(pageFormat.getImageableWidth() / ticket.getWidth(),
+                    pageFormat.getImageableHeight() / ticket.getHeight());
+            g.translate(pageFormat.getImageableX(), pageFormat.getImageableY());
+            g.scale(scale, scale);
+            ticket.printAll(g);
+            g.dispose();
+            return java.awt.print.Printable.PAGE_EXISTS;
+        });
+        try {
+            if (job.printDialog()) {
+                job.print();
+            }
+        } catch (java.awt.print.PrinterException ex) {
+            JOptionPane.showMessageDialog(parent, "Không thể in vé: " + ex.getMessage(),
+                    "In vé", JOptionPane.ERROR_MESSAGE);
+        }
     }
 }

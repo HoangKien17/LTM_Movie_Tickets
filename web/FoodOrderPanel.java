@@ -131,8 +131,9 @@ final class FoodOrderPanel extends JPanel {
         quantities.forEach((id, count) -> {
             if (count > 0) {
                 items.add(id + ":" + count);
-        
-            }});
+
+            }
+        });
         return String.join(",", items);
     }
 
@@ -141,8 +142,9 @@ final class FoodOrderPanel extends JPanel {
         quantities.forEach((id, count) -> {
             if (count > 0) {
                 items.add(names.get(id) + " × " + count);
-        
-            }});
+
+            }
+        });
         return items.isEmpty() ? "Không chọn đồ ăn/nước uống" : String.join("\n", items);
     }
 }

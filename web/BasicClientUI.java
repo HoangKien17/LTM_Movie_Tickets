@@ -29,8 +29,8 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.text.NumberFormat;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -42,16 +42,17 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
-import javax.swing.JComponent;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
 import javax.swing.JPasswordField;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
@@ -217,6 +218,27 @@ public final class BasicClientUI extends JFrame {
         addAuthRow(content, authLabel(subtitle, 12, Font.PLAIN, UiTheme.MUTED), row++, 23);
         addAuthRow(content, form, row++, 20);
 
+        if ("Đăng nhập".equals(actionText)) {
+            JPanel options = new JPanel(new BorderLayout());
+            options.setOpaque(false);
+            JCheckBox remember = new JCheckBox("Ghi nhớ đăng nhập");
+            remember.setOpaque(false);
+            remember.setForeground(UiTheme.MUTED);
+            remember.setFont(UiTheme.font(12, Font.PLAIN));
+            remember.setFocusable(false);
+            options.add(remember, BorderLayout.WEST);
+            JButton help = new JButton("Quên mật khẩu?");
+            help.setFont(UiTheme.font(12, Font.PLAIN));
+            help.setForeground(UiTheme.PURPLE);
+            help.setBorderPainted(false);
+            help.setContentAreaFilled(false);
+            help.addActionListener(event -> JOptionPane.showMessageDialog(this,
+                    "Hãy đăng nhập bằng tài khoản hiện có, sau đó chọn Thông tin cá nhân để đổi mật khẩu.",
+                    "Khôi phục tài khoản", JOptionPane.INFORMATION_MESSAGE));
+            options.add(help, BorderLayout.EAST);
+            addAuthRow(content, options, row++, 16);
+        }
+
         JButton submit = UiTheme.primary(actionText);
         submit.setPreferredSize(new Dimension(320, 44));
         submit.addActionListener(event -> action.run());
@@ -316,7 +338,7 @@ public final class BasicClientUI extends JFrame {
                 int x, int y, int width, int height) {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(UiTheme.LINE);
+            g.setColor(c.hasFocus() ? UiTheme.PRIMARY : UiTheme.LINE);
             g.draw(new RoundRectangle2D.Float(x + 0.5f, y + 0.5f,
                     width - 1.5f, height - 1.5f, 10, 10));
             g.dispose();
@@ -357,11 +379,11 @@ public final class BasicClientUI extends JFrame {
         protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(new Color(32, 34, 55, 20));
-            g.fillRoundRect(5, 8, getWidth() - 10, getHeight() - 10, 15, 15);
-            g.setColor(UiTheme.SURFACE);
+            g.setColor(new Color(92, 226, 239, 20));
+            g.fillRoundRect(7, 10, getWidth() - 14, getHeight() - 12, 20, 20);
+            g.setPaint(new GradientPaint(0, 0, new Color(19, 30, 54), getWidth(), getHeight(), UiTheme.SURFACE));
             g.fillRoundRect(1, 1, getWidth() - 8, getHeight() - 10, 15, 15);
-            g.setColor(UiTheme.LINE);
+            g.setColor(new Color(102, 235, 255, 125));
             g.drawRoundRect(1, 1, getWidth() - 8, getHeight() - 10, 15, 15);
             g.dispose();
             super.paintComponent(graphics);
@@ -392,27 +414,28 @@ public final class BasicClientUI extends JFrame {
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             int w = getWidth();
             int h = getHeight();
-            g.setPaint(new GradientPaint(0, 0, new Color(12, 14, 42),
-                    w, h, new Color(5, 31, 56)));
+            g.setPaint(new GradientPaint(0, 0, new Color(10, 12, 29),
+                    w, h, new Color(8, 28, 52)));
             g.fillRect(0, 0, w, h);
-            g.setColor(new Color(110, 76, 178, 24));
+            g.setColor(new Color(125, 78, 220, 32));
             g.fillOval(-w / 3, -h / 4, w, h / 2);
 
-            g.setFont(new Font("SansSerif", Font.BOLD, 24));
-            g.setColor(new Color(255, 210, 146));
+            g.setFont(new Font("SansSerif", Font.BOLD, 25));
+            g.setColor(UiTheme.PRIMARY);
             g.drawString("GALAXY CINEMA", 36, 70);
             g.setPaint(new GradientPaint(36, 95, new Color(255, 216, 154),
-                    116, 95, new Color(125, 89, 192)));
+                    116, 95, UiTheme.PURPLE));
             g.fillRoundRect(36, 91, 80, 3, 3, 3);
 
             g.setFont(new Font("SansSerif", Font.BOLD, 30));
             g.setColor(Color.WHITE);
-            g.drawString("Mỗi suất chiếu", 36, 169);
-            g.drawString("một trải nghiệm mới.", 36, 208);
+            g.drawString("Trải nghiệm", 36, 169);
+            g.setColor(UiTheme.PRIMARY);
+            g.drawString("màn ảnh rộng lớn.", 36, 208);
             g.setFont(new Font("SansSerif", Font.PLAIN, 14));
             g.setColor(new Color(203, 211, 230));
-            g.drawString("Khám phá phim hay, chọn chỗ ngồi yêu thích", 36, 246);
-            g.drawString("và giữ vé chỉ trong vài bước.", 36, 267);
+            g.drawString("Chọn phim, ghế và combo trong một", 36, 246);
+            g.drawString("hành trình đặt vé liền mạch.", 36, 267);
 
             int artTop = 315;
             int artBottom = h - 56;
@@ -435,7 +458,9 @@ public final class BasicClientUI extends JFrame {
     private JPanel buildMain() {
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(UiTheme.BACKGROUND);
-        root.add(buildSidebar(), BorderLayout.WEST);
+        // Giữ các nút sidebar ẩn để phân quyền/quy tắc điều hướng cũ không đổi;
+        // khách hàng dùng thanh điều hướng ngang giống giao diện thiết kế mới.
+        buildSidebar();
         JPanel right = new JPanel(new BorderLayout());
         right.setOpaque(false);
         right.add(buildHeader(), BorderLayout.NORTH);
@@ -519,7 +544,7 @@ public final class BasicClientUI extends JFrame {
     }
 
     private JPanel buildHeader() {
-        JPanel header = new JPanel(new BorderLayout(22, 0));
+        JPanel header = new JPanel(new BorderLayout(14, 0));
         header.setBackground(UiTheme.NAVY);
         header.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 1, 0, UiTheme.LINE),
@@ -532,7 +557,14 @@ public final class BasicClientUI extends JFrame {
         brand.add(orbit, BorderLayout.WEST);
         JLabel name = label("GALAXY CINEMA", 21, Font.BOLD, UiTheme.WHITE);
         brand.add(name, BorderLayout.CENTER);
-        header.add(brand, BorderLayout.WEST);
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 18, 0));
+        left.setOpaque(false);
+        left.add(brand);
+        left.add(headerNav("Trang chủ", "MOVIES"));
+        left.add(headerNav("Phim", "MOVIES"));
+        left.add(headerNav("Lịch chiếu", "SHOWS"));
+        left.add(headerNav("Vé của tôi", "BOOKINGS"));
+        header.add(left, BorderLayout.WEST);
         JPanel searchBox = new JPanel(new BorderLayout(9, 0));
         searchBox.setOpaque(false);
         JLabel glass = label("TÌM", 11, Font.BOLD, UiTheme.PRIMARY);
@@ -563,6 +595,29 @@ public final class BasicClientUI extends JFrame {
         userBox.add(avatar);
         header.add(userBox, BorderLayout.EAST);
         return header;
+    }
+
+    private JButton headerNav(String text, String page) {
+        JButton button = new JButton(text);
+        button.setFont(UiTheme.font(12, Font.BOLD));
+        button.setForeground(UiTheme.MUTED);
+        button.setBorder(BorderFactory.createEmptyBorder(9, 5, 9, 5));
+        button.setContentAreaFilled(false);
+        button.setFocusPainted(false);
+        button.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        button.addActionListener(event -> navigate(page));
+        button.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent event) {
+                button.setForeground(UiTheme.PRIMARY);
+            }
+
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent event) {
+                button.setForeground(UiTheme.MUTED);
+            }
+        });
+        return button;
     }
 
     private JPanel buildMovies() {
@@ -1133,8 +1188,8 @@ public final class BasicClientUI extends JFrame {
             renderMovies();
             heroIndex = 0;
             if (movies.isEmpty()) {
-                hero.movie("HẸN BẠN TẠI RẠP", "Danh sách phim sẽ sớm được cập nhật.", null, null); 
-            }else {
+                hero.movie("HẸN BẠN TẠI RẠP", "Danh sách phim sẽ sớm được cập nhật.", null, null);
+            } else {
                 changeHero(0);
             }
             status.setText("Đã tải " + movies.size() + " phim");
@@ -1544,8 +1599,8 @@ public final class BasicClientUI extends JFrame {
         javax.swing.Timer ready = new javax.swing.Timer(100, null);
         ready.addActionListener(event -> {
             if (client == null || !id.equals(pendingElectronicTicket)) {
-                ready.stop(); 
-            }else if (!busy) {
+                ready.stop();
+            } else if (!busy) {
                 ready.stop();
                 navigate("BOOKINGS");
             }
