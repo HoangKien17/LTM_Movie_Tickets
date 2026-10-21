@@ -7,7 +7,6 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
-import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
@@ -20,7 +19,6 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -44,7 +42,6 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
-import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -150,6 +147,17 @@ public final class BasicClientUI extends JFrame {
     private final JLabel adminResultTitle = label("Chọn một mục để xem dữ liệu", 17, Font.BOLD, UiTheme.TEXT);
     private final JLabel adminStats = label("", 13, Font.PLAIN, UiTheme.MUTED);
     private JPanel adminNavGroup;
+    private javax.swing.JTabbedPane adminTabs;
+
+    private enum AdminView {
+        MOVIES, ROOMS, SHOWS, PRODUCTS, USERS, BOOKINGS, REVENUE
+    }
+    private AdminView adminView = AdminView.MOVIES;
+    private AdminView adminReportView = AdminView.BOOKINGS;
+    private long adminViewRevision;
+    private boolean adminRefreshPending, adminStatsPending, updatingAdminTabs;
+    private String adminFocusId;
+    private final JLabel adminFeedback = label(" ", 13, Font.PLAIN, UiTheme.GREEN);
     private JPanel staffNavGroup;
     private TicketCheckInPanel checkInPanel;
     private ServerMonitorPanel monitorPanel;
@@ -529,7 +537,7 @@ public final class BasicClientUI extends JFrame {
         columns.add(homeShowtimes, BorderLayout.EAST);
         page.add(columns, BorderLayout.CENTER);
         heroTimer = new javax.swing.Timer(7000, e -> {
-            if ("MOVIES".equals(activePage) && hero.isShowing()) {
+            if ("MOVIES".equals(activePage) && hero.isShowing() && hero.canRotate()) {
                 changeHero(1);
             }
         });
@@ -814,6 +822,8 @@ public final class BasicClientUI extends JFrame {
     private JPanel buildAdmin() {
         JPanel page = page();
         javax.swing.JTabbedPane groups = new javax.swing.JTabbedPane();
+        adminTabs = groups;
+        groups.setName("admin-tabs");
         UiTheme.styleTabs(groups);
         groups.setOpaque(false);
         groups.add(adminGroup("Quản lý phim", "Nội dung đang chiếu",
@@ -844,6 +854,28 @@ public final class BasicClientUI extends JFrame {
         for (int i = 0; i < groups.getTabCount(); i++) {
             groups.setTitleAt(i, new String[]{"Phim", "Phòng chiếu", "Suất chiếu", "Đồ ăn & nước", "Báo cáo"}[i]);
         }
+        groups.addChangeListener(e -> {
+            if (updatingAdminTabs || !admin || !"ADMIN".equals(activePage)) {
+                return;
+            }
+            switch (groups.getSelectedIndex()) {
+                case 0:
+                    adminMovies();
+                    break;
+                case 1:
+                    adminRooms();
+                    break;
+                case 2:
+                    adminShows();
+                    break;
+                case 3:
+                    adminProducts();
+                    break;
+                default:
+                    requestAdminView(adminReportView);
+                    break;
+            }
+        });
         groups.setFont(UiTheme.font(14, Font.BOLD));
         groups.setPreferredSize(new Dimension(0, 170));
         page.add(groups, BorderLayout.NORTH);
@@ -854,7 +886,12 @@ public final class BasicClientUI extends JFrame {
         title.setOpaque(false);
         title.add(adminResultTitle, BorderLayout.WEST);
         title.add(adminStats, BorderLayout.EAST);
-        results.add(title, BorderLayout.NORTH);
+        JPanel resultHeader = new JPanel(new BorderLayout(0, 7));
+        resultHeader.setOpaque(false);
+        resultHeader.add(title, BorderLayout.NORTH);
+        adminFeedback.setName("admin-feedback");
+        resultHeader.add(adminFeedback, BorderLayout.SOUTH);
+        results.add(resultHeader, BorderLayout.NORTH);
         UiTheme.styleTable(adminTable);
         results.add(UiTheme.scroll(adminTable), BorderLayout.CENTER);
         page.add(results, BorderLayout.CENTER);
@@ -957,7 +994,7 @@ public final class BasicClientUI extends JFrame {
                 pageTitle.setText("Trung tâm quản trị");
                 pageSubtitle.setText("Quản lý nội dung, lịch chiếu và hoạt động đặt vé.");
                 if (fetch) {
-                    adminStats();
+                    requestAdminView(adminView);
                 }
                 break;
             default:
@@ -1121,6 +1158,8 @@ public final class BasicClientUI extends JFrame {
             heroIndex = 0;
             if (movies.isEmpty()) {
                 hero.movie("HẸN BẠN TẠI RẠP", "Danh sách phim sẽ sớm được cập nhật.", null, null);
+                hero.caption("GALAXY CINEMA  /  KHÁM PHÁ");
+                hero.description("Hiện chưa có phim trong danh sách. Hẹn gặp bạn ở những suất chiếu sắp tới.");
             } else {
                 changeHero(0);
                 selectMovie(movies.get(0));
@@ -1624,7 +1663,145 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void adminMovies() {
-        send("GET_MOVIES", lines -> {
+        requestAdminView(AdminView.MOVIES);
+    }
+
+    private void adminRooms() {
+        requestAdminView(AdminView.ROOMS);
+    }
+
+    private void adminShows() {
+        requestAdminView(AdminView.SHOWS);
+    }
+
+    private void adminProducts() {
+        requestAdminView(AdminView.PRODUCTS);
+    }
+
+    private void adminUsers() {
+        requestAdminView(AdminView.USERS);
+    }
+
+    private void adminBookings() {
+        requestAdminView(AdminView.BOOKINGS);
+    }
+
+    private void adminRevenue() {
+        requestAdminView(AdminView.REVENUE);
+    }
+
+    private void requestAdminView(AdminView view) {
+        adminView = view;
+        if (view == AdminView.USERS || view == AdminView.BOOKINGS || view == AdminView.REVENUE) {
+            adminReportView = view;
+        }
+        updatingAdminTabs = true;
+        try {
+            adminTabs.setSelectedIndex(adminTab(view));
+        } finally {
+            updatingAdminTabs = false;
+        }
+        adminViewRevision++;
+        adminRefreshPending = true;
+        adminStatsPending = true;
+        adminFocusId = null;
+        adminFeedback.setText(" ");
+        adminModel.setRowCount(0);
+        adminResultTitle.setText("Đang tải " + adminViewTitle(view) + "...");
+        flushAdminRefresh();
+    }
+
+    private static int adminTab(AdminView view) {
+        switch (view) {
+            case MOVIES:
+                return 0;
+            case ROOMS:
+                return 1;
+            case SHOWS:
+                return 2;
+            case PRODUCTS:
+                return 3;
+            default:
+                return 4;
+        }
+    }
+
+    private static String adminViewTitle(AdminView view) {
+        switch (view) {
+            case MOVIES:
+                return "danh sách phim";
+            case ROOMS:
+                return "danh sách phòng";
+            case SHOWS:
+                return "danh sách suất chiếu";
+            case PRODUCTS:
+                return "đồ ăn & nước uống";
+            case USERS:
+                return "người dùng";
+            case BOOKINGS:
+                return "đơn vé";
+            default:
+                return "doanh thu theo phim";
+        }
+    }
+
+    private void flushAdminRefresh() {
+        if (busy || !admin || !"ADMIN".equals(activePage) || client == null) {
+            return;
+        }
+        if (adminRefreshPending) {
+            adminRefreshPending = false;
+            switch (adminView) {
+                case MOVIES:
+                    loadAdminMovies();
+                    break;
+                case ROOMS:
+                    loadAdminRooms();
+                    break;
+                case SHOWS:
+                    loadAdminShows();
+                    break;
+                case PRODUCTS:
+                    loadAdminProducts();
+                    break;
+                case USERS:
+                    loadAdminUsers();
+                    break;
+                case BOOKINGS:
+                    loadAdminBookings();
+                    break;
+                case REVENUE:
+                    loadAdminRevenue();
+                    break;
+            }
+        } else if (adminStatsPending) {
+            adminStatsPending = false;
+            loadAdminStats();
+        }
+    }
+
+    private void sendAdmin(String command, Consumer<List<String>> onSuccess) {
+        long revision = adminViewRevision;
+        send(command, lines -> {
+            if (admin && "ADMIN".equals(activePage) && revision == adminViewRevision) {
+                onSuccess.accept(lines);
+            }
+        });
+    }
+
+    private void adminChanged(String message, AdminView view, String focusId) {
+        requestAdminView(view);
+        adminFocusId = focusId;
+        adminFeedback.setText(message + " • Đang cập nhật danh sách...");
+    }
+
+    private static String addedAdminId(List<String> lines) {
+        String[] parts = lines.get(0).split(";", -1);
+        return parts.length > 2 ? parts[2] : null;
+    }
+
+    private void loadAdminMovies() {
+        sendAdmin("GET_MOVIES", lines -> {
             if (!isOk(lines, "MOVIES")) {
                 return;
             }
@@ -1641,13 +1818,13 @@ public final class BasicClientUI extends JFrame {
         });
     }
 
-    private void adminRooms() {
+    private void loadAdminRooms() {
         adminList("ADMIN_GET_ROOMS", "ROOMS", "ROOM",
                 new String[]{"Mã", "Tên phòng", "Số ghế"}, 3);
     }
 
-    private void adminProducts() {
-        send("ADMIN_GET_PRODUCTS", lines -> {
+    private void loadAdminProducts() {
+        sendAdmin("ADMIN_GET_PRODUCTS", lines -> {
             List<String[]> data = rows(lines, "PRODUCTS", "PRODUCT", 5);
             if (data == null) {
                 return;
@@ -1669,8 +1846,7 @@ public final class BasicClientUI extends JFrame {
         }
         send("ADMIN_ADD_PRODUCT;" + enc(v[0]) + ";" + v[1] + ";" + v[2], lines -> {
             if (isOk(lines, "ADDED")) {
-                info("Đã thêm sản phẩm");
-                adminProducts();
+                adminChanged("Đã thêm sản phẩm", AdminView.PRODUCTS, addedAdminId(lines));
             }
         });
     }
@@ -1682,8 +1858,7 @@ public final class BasicClientUI extends JFrame {
         }
         send("ADMIN_UPDATE_PRODUCT;" + v[0] + ";" + enc(v[1]) + ";" + v[2] + ";" + v[3] + ";" + v[4], lines -> {
             if (isOk(lines, "UPDATED")) {
-                info("Đã cập nhật sản phẩm");
-                adminProducts();
+                adminChanged("Đã cập nhật sản phẩm", AdminView.PRODUCTS, v[0]);
             }
         });
     }
@@ -1699,29 +1874,28 @@ public final class BasicClientUI extends JFrame {
         }
         send("ADMIN_DELETE_PRODUCT;" + id.trim(), lines -> {
             if (isOk(lines, "DELETED")) {
-                info("Đã ngừng bán sản phẩm #" + id.trim());
-                adminProducts();
+                adminChanged("Đã ngừng bán sản phẩm #" + id.trim(), AdminView.PRODUCTS, id.trim());
             }
         });
     }
 
-    private void adminShows() {
+    private void loadAdminShows() {
         adminList("ADMIN_GET_SHOWS", "SHOWS", "SHOW",
                 new String[]{"Mã", "Mã phim", "Phim", "Phòng", "Bắt đầu", "Giá vé"}, 6);
     }
 
-    private void adminUsers() {
+    private void loadAdminUsers() {
         adminList("ADMIN_GET_USERS", "USERS", "USER",
                 new String[]{"Mã", "Họ tên", "Email", "Số điện thoại", "Vai trò"}, 5);
     }
 
-    private void adminBookings() {
+    private void loadAdminBookings() {
         adminList("ADMIN_GET_BOOKINGS", "BOOKINGS", "BOOKING",
                 new String[]{"Mã đơn", "Người đặt", "Phim", "Phòng", "Bắt đầu",
                     "Tổng tiền", "Trạng thái", "Ghế"}, 8);
     }
 
-    private void adminStats() {
+    private void loadAdminStats() {
         send("ADMIN_GET_STATS", lines -> {
             List<String[]> data = rows(lines, "STATS", "STAT", 2);
             if (data == null || data.isEmpty()) {
@@ -1729,12 +1903,12 @@ public final class BasicClientUI extends JFrame {
             }
             adminStats.setText("Vé còn hiệu lực: " + data.get(0)[0]
                     + "    •    Doanh thu còn hiệu lực: " + formatMoney(data.get(0)[1]));
-            status.setText("Đã tải thống kê");
+
         });
     }
 
-    private void adminRevenue() {
-        send("ADMIN_GET_REVENUE", lines -> {
+    private void loadAdminRevenue() {
+        sendAdmin("ADMIN_GET_REVENUE", lines -> {
             List<String[]> data = rows(lines, "REVENUE", "MOVIE_REVENUE", 3);
             if (data == null) {
                 return;
@@ -1745,12 +1919,11 @@ public final class BasicClientUI extends JFrame {
             }
             setAdminTable("Doanh thu theo phim",
                     new String[]{"Tên phim", "Vé còn hiệu lực", "Doanh thu"}, visible);
-            adminStats();
         });
     }
 
     private void adminList(String command, String kind, String tag, String[] headers, int fields) {
-        send(command, lines -> {
+        sendAdmin(command, lines -> {
             List<String[]> data = rows(lines, kind, tag, fields);
             if (data == null) {
                 return;
@@ -1777,7 +1950,23 @@ public final class BasicClientUI extends JFrame {
     private void setAdminTable(String title, String[] headers, List<Object[]> rows) {
         adminResultTitle.setText(title);
         adminModel.setDataVector(rows.toArray(new Object[0][]), headers);
-        status.setText("Đã tải " + rows.size() + " mục");
+        if (adminFocusId != null) {
+            for (int row = 0; row < adminModel.getRowCount(); row++) {
+                if (adminFocusId.equals(String.valueOf(adminModel.getValueAt(row, 0)))) {
+                    int visibleRow = adminTable.convertRowIndexToView(row);
+                    if (visibleRow >= 0) {
+                        adminTable.setRowSelectionInterval(visibleRow, visibleRow);
+                        adminTable.scrollRectToVisible(adminTable.getCellRect(visibleRow, 0, true));
+                    }
+                    break;
+                }
+            }
+            adminFocusId = null;
+        }
+        if (adminFeedback.getText().contains("Đang cập nhật danh sách...")) {
+            adminFeedback.setText(adminFeedback.getText().replace("Đang cập nhật danh sách...", "Danh sách đã cập nhật"));
+        }
+        status.setText("Đã tải " + rows.size() + " mục từ máy chủ");
     }
 
     private void adminAddMovie() {
@@ -1796,8 +1985,7 @@ public final class BasicClientUI extends JFrame {
                 lines -> {
                     if (isOk(lines, "ADDED")) {
                         movies.clear();
-                        info("Đã thêm phim" + (form.posterFile == null ? "" : " và poster"));
-                        adminMovies();
+                        adminChanged("Đã thêm phim" + (form.posterFile == null ? "" : " và poster"), AdminView.MOVIES, addedAdminId(lines));
                     }
                 });
     }
@@ -1821,8 +2009,7 @@ public final class BasicClientUI extends JFrame {
                 lines -> {
                     if (isOk(lines, "UPDATED")) {
                         movies.clear();
-                        info("Đã sửa phim" + (form.posterFile == null ? "" : " và poster"));
-                        adminMovies();
+                        adminChanged("Đã sửa phim" + (form.posterFile == null ? "" : " và poster"), AdminView.MOVIES, v[0]);
                     }
                 });
     }
@@ -1836,8 +2023,7 @@ public final class BasicClientUI extends JFrame {
         send("ADMIN_ADD_ROOM;" + enc(v[0]) + ";" + v[1] + ";" + v[2],
                 lines -> {
                     if (isOk(lines, "ADDED")) {
-                        info("Đã thêm phòng");
-                        adminRooms();
+                        adminChanged("Đã thêm phòng", AdminView.ROOMS, addedAdminId(lines));
                     }
                 });
     }
@@ -1864,8 +2050,7 @@ public final class BasicClientUI extends JFrame {
                     if (isOk(lines, "UPDATED")) {
                         showModel.setRowCount(0);
                         clearSeats();
-                        info("Đã cập nhật phòng chiếu");
-                        adminRooms();
+                        adminChanged("Đã cập nhật phòng chiếu", AdminView.ROOMS, v[0]);
                     }
                 });
     }
@@ -1880,8 +2065,7 @@ public final class BasicClientUI extends JFrame {
                 lines -> {
                     if (isOk(lines, "ADDED")) {
                         showModel.setRowCount(0);
-                        info("Đã thêm suất chiếu");
-                        adminShows();
+                        adminChanged("Đã thêm suất chiếu", AdminView.SHOWS, addedAdminId(lines));
                     }
                 });
     }
@@ -1896,8 +2080,7 @@ public final class BasicClientUI extends JFrame {
                 lines -> {
                     if (isOk(lines, "UPDATED")) {
                         showModel.setRowCount(0);
-                        info("Đã sửa suất chiếu");
-                        adminShows();
+                        adminChanged("Đã sửa suất chiếu", AdminView.SHOWS, v[0]);
                     }
                 });
     }
@@ -1914,8 +2097,7 @@ public final class BasicClientUI extends JFrame {
         send("ADMIN_CANCEL_TICKET;" + id.trim(),
                 lines -> {
                     if (isOk(lines, "CANCELLED")) {
-                        info("Đã hủy đơn vé");
-                        adminBookings();
+                        adminChanged("Đã hủy đơn vé", AdminView.BOOKINGS, id.trim());
                     }
                 });
     }
@@ -1935,8 +2117,8 @@ public final class BasicClientUI extends JFrame {
             }
             movies.clear();
             showModel.setRowCount(0);
-            info("Đã xóa " + label.toLowerCase(Locale.ROOT) + " #" + id.trim());
             refresh.run();
+            adminFeedback.setText("Đã xóa " + label.toLowerCase(Locale.ROOT) + " #" + id.trim() + " • Đang cập nhật danh sách...");
         });
     }
 
@@ -2143,6 +2325,7 @@ public final class BasicClientUI extends JFrame {
                 } finally {
                     // Không bỏ mất EOF hoặc event đến khi request đang chạy.
                     handlePendingDisconnect();
+                    flushAdminRefresh();
                     flushSeatRefresh();
                     if (!busy && notificationRefreshPending && loggedIn) {
                         refreshNotifications();
@@ -2212,6 +2395,21 @@ public final class BasicClientUI extends JFrame {
 
     private void resetSession() {
         loggedIn = false;
+        adminViewRevision++;
+        adminRefreshPending = false;
+        adminStatsPending = false;
+        adminView = AdminView.MOVIES;
+        adminReportView = AdminView.BOOKINGS;
+        adminFocusId = null;
+        updatingAdminTabs = true;
+        try {
+            adminTabs.setSelectedIndex(0);
+        } finally {
+            updatingAdminTabs = false;
+        }
+        adminFeedback.setText(" ");
+        adminStats.setText("");
+        adminResultTitle.setText("Chọn một mục để xem dữ liệu");
         notificationRefreshPending = false;
         notificationTimer.stop();
         notificationCenter.clear();
@@ -2249,6 +2447,8 @@ public final class BasicClientUI extends JFrame {
         movieDetails.removeAll();
         timeSlots.removeAll();
         hero.movie("ĐIỆN ẢNH THEO CÁCH CỦA BẠN", "Chọn phim. Chọn ghế. Tận hưởng.", null, null);
+        hero.caption("GALAXY CINEMA  /  KHÁM PHÁ");
+        hero.description("Khám phá câu chuyện tiếp theo của bạn.");
         showPrices.clear();
         movieGrid.removeAll();
         showTable.clearSelection();
