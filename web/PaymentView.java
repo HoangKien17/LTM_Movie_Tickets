@@ -18,7 +18,15 @@ final class PaymentView {
     final BiConsumer<String, Consumer<List<String>>> send;
     final Runnable paid;
     final JLabel status = new JLabel(), countdown = new JLabel(), error = new JLabel(" ");
-    final JLabel qr = new JLabel();
+    final JLabel qr = new JLabel() {
+        @Override
+        public void setBounds(int x, int y, int width, int height) {
+            super.setBounds(x, y, width, height);
+            fitQr(width, height);
+        }
+    };
+    private int qrSize;
+    private String qrPayload;
     final JButton demo = UiTheme.secondary("Giả lập thanh toán thành công");
     final JButton checkout = UiTheme.primary("Mở trang thanh toán");
     final Timer timer;
@@ -31,95 +39,139 @@ final class PaymentView {
         this.send = send;
         this.paid = paid;
         dialog = new JDialog(owner, "Thanh toán • Đơn #" + payment[0], true);
-        JPanel root = new JPanel(new BorderLayout(20, 20));
+        JPanel root = new JPanel(new BorderLayout(20, 18));
         root.setBackground(UiTheme.BACKGROUND);
         root.setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
-        root.add(new BookingSteps(3), BorderLayout.NORTH);
+        JPanel heading = new JPanel(new BorderLayout(0, 14));
+        heading.setOpaque(false);
+        heading.add(new BookingSteps(3), BorderLayout.NORTH);
+        JLabel pageTitle = new JLabel("Thanh toán đơn vé");
+        pageTitle.setFont(UiTheme.font(25, Font.BOLD));
+        heading.add(pageTitle, BorderLayout.SOUTH);
+        root.add(heading, BorderLayout.NORTH);
         JPanel columns = new JPanel(new GridLayout(1, 2, 20, 0));
         columns.setOpaque(false);
         UiTheme.RoundedPanel info = UiTheme.surface();
-        info.setLayout(new BorderLayout(0, 16));
-        JLabel heading = new JLabel("THANH TOÁN ĐƠN #" + payment[0]);
-        heading.setFont(UiTheme.font(17, Font.BOLD));
-        info.add(heading, BorderLayout.NORTH);
-        JPanel content = new JPanel();
-        content.setOpaque(false);
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        JTextArea details = text(order, 14);
-        details.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
-        content.add(details);
-        content.add(Box.createVerticalStrut(18));
-        JLabel amountLabel = new JLabel("TỔNG THANH TOÁN");
-        amountLabel.setForeground(UiTheme.MUTED);
-        content.add(amountLabel);
-        JLabel amount = new JLabel(BasicClientUI.formatMoney(payment[1]));
-        amount.setFont(UiTheme.font(30, Font.BOLD));
-        amount.setForeground(UiTheme.PRIMARY);
-        content.add(amount);
-        content.add(Box.createVerticalStrut(22));
-        status.setFont(UiTheme.font(14, Font.BOLD));
-        content.add(status);
-        content.add(Box.createVerticalStrut(8));
-        countdown.setForeground(UiTheme.MUTED);
-        countdown.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
-        content.add(countdown);
-        content.add(Box.createVerticalStrut(18));
-        content.add(text("Vé điện tử xuất hiện sau khi server xác nhận thanh toán. "
-                + "Bạn có thể mở lại giao dịch trong mục Vé của tôi.", 13));
-        for (Component c : content.getComponents()) {
-            if (c instanceof JComponent) {
-                ((JComponent) c).setAlignmentX(Component.LEFT_ALIGNMENT);
-            }
+        info.setLayout(new BorderLayout(0, 18));
+        JPanel methods = new JPanel(new GridLayout(1, 3, 8, 0));
+        methods.setOpaque(false);
+        JButton bank = UiTheme.secondary("QR ngân hàng");
+        bank.setToolTipText("Quét bằng ứng dụng ngân hàng; giao dịch được máy chủ xác nhận.");
+        JButton card = UiTheme.subtle("Thẻ ngân hàng");
+        JButton wallet = UiTheme.subtle("Ví điện tử");
+        card.setEnabled(false);
+        wallet.setEnabled(false);
+        card.setToolTipText("Chưa hỗ trợ thanh toán thẻ trực tiếp");
+        wallet.setToolTipText("Chưa hỗ trợ ví điện tử trực tiếp");
+        for (JButton b : new JButton[]{bank, card, wallet}) {
+            b.setFont(UiTheme.font(11, Font.BOLD));
+            b.setBorder(BorderFactory.createEmptyBorder(8, 2, 8, 2));
+            methods.add(b);
         }
-        info.add(content, BorderLayout.CENTER);
-        JButton close = UiTheme.subtle("Đóng • xem lại trong Vé của tôi");
+        info.add(methods, BorderLayout.NORTH);
+        JPanel content = new JPanel(new BorderLayout(0, 12));
+        content.setOpaque(false);
+        JPanel orderInfo = new JPanel(new BorderLayout(0, 8));
+        orderInfo.setOpaque(false);
+        JLabel orderId = new JLabel("THÔNG TIN ĐƠN #" + payment[0]);
+        orderId.setForeground(UiTheme.PURPLE);
+        orderId.setFont(UiTheme.font(13, Font.BOLD));
+        orderInfo.add(orderId, BorderLayout.NORTH);
+        JTextArea details = text(order, 14);
+        JScrollPane orderScroll = UiTheme.scroll(details);
+        orderScroll.setPreferredSize(new Dimension(300, 86));
+        orderInfo.add(orderScroll, BorderLayout.CENTER);
+        content.add(orderInfo, BorderLayout.NORTH);
+        JPanel bill = new JPanel();
+        bill.setOpaque(false);
+        bill.setLayout(new BoxLayout(bill, BoxLayout.Y_AXIS));
+        JLabel totalLabel = new JLabel("TỔNG THANH TOÁN");
+        totalLabel.setForeground(UiTheme.MUTED);
+        totalLabel.setFont(UiTheme.font(12, Font.BOLD));
+        bill.add(totalLabel);
+        JLabel amount = new JLabel(BasicClientUI.formatMoney(payment[1]));
+        amount.setForeground(UiTheme.PRIMARY);
+        amount.setFont(UiTheme.font(32, Font.BOLD));
+        bill.add(amount);
+        bill.add(Box.createVerticalStrut(12));
+        status.setFont(UiTheme.font(14, Font.BOLD));
+        bill.add(status);
+        bill.add(Box.createVerticalStrut(8));
+        countdown.setForeground(UiTheme.GOLD);
+        countdown.setFont(UiTheme.font(14, Font.BOLD));
+        bill.add(countdown);
+        content.add(bill, BorderLayout.CENTER);
+        JTextArea hint = text("Giữ ghế tối đa 10 phút. Vé điện tử được phát hành sau khi giao dịch thành công.", 12);
+        hint.setRows(3);
+        content.add(hint, BorderLayout.SOUTH);
+        info.add(UiTheme.scrollContent(content), BorderLayout.CENTER);
+        JButton close = UiTheme.subtle("Đóng • mở lại trong Vé của tôi");
         close.addActionListener(e -> dialog.dispose());
         info.add(close, BorderLayout.SOUTH);
         columns.add(info);
-        UiTheme.RoundedPanel scan = UiTheme.surface();
-        scan.setLayout(new BorderLayout(0, 12));
-        scan.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createDashedBorder(UiTheme.PRIMARY, 1.4f, 5f, 3f, false),
-                BorderFactory.createEmptyBorder(16, 16, 16, 16)));
+        TicketCard scan = new TicketCard();
         boolean isDemo = "demo".equals(payment[6]);
-        JLabel method = new JLabel(isDemo ? "DEMO • KHÔNG CHUYỂN TIỀN" : "QUÉT QR BẰNG ỨNG DỤNG NGÂN HÀNG",
-                SwingConstants.CENTER);
-        method.setFont(UiTheme.font(12, Font.BOLD));
-        method.setForeground(isDemo ? UiTheme.GOLD : UiTheme.PRIMARY);
-        JPanel ticketHeading = new JPanel(new GridLayout(2, 1, 0, 3));
+        JPanel ticketHeading = new JPanel(new GridLayout(3, 1, 0, 8));
         ticketHeading.setOpaque(false);
-        JLabel ticket = new JLabel("GALAXY CINEMA  •  THANH TOÁN QR", SwingConstants.CENTER);
-        ticket.setForeground(UiTheme.PRIMARY);
-        ticket.setFont(UiTheme.font(14, Font.BOLD));
-        ticketHeading.add(ticket);
+        JLabel brand = new JLabel("GALAXY CINEMA", SwingConstants.CENTER);
+        brand.setFont(UiTheme.font(18, Font.BOLD));
+        brand.setForeground(UiTheme.PRIMARY);
+        ticketHeading.add(brand);
+        JLabel scanTitle = new JLabel("MÃ THANH TOÁN", SwingConstants.CENTER);
+        scanTitle.setFont(UiTheme.font(13, Font.BOLD));
+        ticketHeading.add(scanTitle);
+        JLabel method = new JLabel(isDemo ? "DEMO • KHÔNG CHUYỂN TIỀN" : "Quét QR bằng ứng dụng ngân hàng", SwingConstants.CENTER);
+        method.setFont(UiTheme.font(11, Font.BOLD));
+        method.setForeground(isDemo ? UiTheme.GOLD : UiTheme.MUTED);
         ticketHeading.add(method);
-        scan.add(ticketHeading, BorderLayout.NORTH);
+        scan.header(ticketHeading);
         qr.setHorizontalAlignment(SwingConstants.CENTER);
-        qr.setIcon(new ImageIcon(QrImages.encode(payment[3], 300)));
+        qr.setVerticalAlignment(SwingConstants.CENTER);
+        qr.setIcon(new ImageIcon(QrImages.encode(payment[3], 248)));
         scan.add(qr, BorderLayout.CENTER);
         JPanel actions = new JPanel(new GridLayout(0, 1, 0, 8));
         actions.setOpaque(false);
         error.setForeground(UiTheme.RED);
-        actions.add(error);
+        error.setFont(UiTheme.font(11, Font.PLAIN));
+
         checkout.setVisible(!payment[4].isEmpty());
         checkout.addActionListener(e -> browse(payment[4]));
-        actions.add(checkout);
+        if (checkout.isVisible()) {
+            actions.add(checkout);
+        }
         demo.setVisible(isDemo);
         demo.addActionListener(e -> confirmDemo());
-        actions.add(demo);
+        if (isDemo) {
+            actions.add(demo);
+        }
+        JPanel leftActions = new JPanel(new BorderLayout(0, 8));
+        leftActions.setOpaque(false);
+        leftActions.add(error, BorderLayout.NORTH);
+        leftActions.add(actions, BorderLayout.CENTER);
+        leftActions.add(close, BorderLayout.SOUTH);
+        info.add(leftActions, BorderLayout.SOUTH);
         JButton check = UiTheme.secondary("Kiểm tra giao dịch");
         check.addActionListener(e -> refresh());
-        actions.add(check);
-        scan.add(actions, BorderLayout.SOUTH);
+        JPanel checkArea = new JPanel(new BorderLayout(0, 8));
+        checkArea.setOpaque(false);
+        checkArea.add(check, BorderLayout.CENTER);
+        JLabel qrHint = new JLabel("Vé QR xuất hiện sau khi thanh toán", SwingConstants.CENTER);
+        qrHint.setFont(UiTheme.font(11, Font.PLAIN));
+        qrHint.setForeground(UiTheme.MUTED);
+        checkArea.add(qrHint, BorderLayout.SOUTH);
+        scan.add(checkArea, BorderLayout.SOUTH);
         columns.add(scan);
         root.add(columns, BorderLayout.CENTER);
         dialog.setContentPane(root);
-        dialog.setSize(900, 620);
-        dialog.setMinimumSize(new Dimension(850, 580));
+        dialog.setSize(1040, 740);
+        dialog.setMinimumSize(new Dimension(920, 680));
         dialog.setLocationRelativeTo(owner);
-        timer = new Timer(3000, e -> {
+        final int[] ticks = {0};
+        timer = new Timer(1000, e -> {
             update();
-            refresh();
+            if (++ticks[0] % 3 == 0) {
+                refresh();
+            }
         });
         update();
         dialog.addWindowListener(new java.awt.event.WindowAdapter() {
@@ -135,6 +187,20 @@ final class PaymentView {
         timer.start();
         dialog.setVisible(true);
         timer.stop();
+    }
+
+    private void fitQr(int width, int height) {
+        if (payment == null || !"pending".equals(payment[2]) || qr.getIcon() == null || width <= 0 || height <= 0) {
+            return;
+        }
+        int size = Math.min(248, Math.min(width, height));
+        if (size == qrSize && payment[3].equals(qrPayload)) {
+            return;
+        }
+        qrSize = size;
+        qrPayload = payment[3];
+        // Regenerate at integer QR modules; scaling a bitmap can blur scanner edges.
+        qr.setIcon(new ImageIcon(QrImages.encode(qrPayload, size)));
     }
 
     void update() {

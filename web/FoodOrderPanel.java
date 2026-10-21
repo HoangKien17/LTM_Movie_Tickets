@@ -23,8 +23,8 @@ final class FoodOrderPanel extends JPanel {
         super(new BorderLayout(0, 12));
         this.changed = changed;
         setOpaque(false);
-        setPreferredSize(new Dimension(252, 240));
-        JLabel title = new JLabel("BẮP NƯỚC & ĐỒ ĂN");
+        setPreferredSize(new Dimension(260, 200));
+        JLabel title = new JLabel("BẮP NƯỚC  /  TÙY CHỌN");
         title.setFont(UiTheme.font(14, Font.BOLD));
         title.setForeground(UiTheme.PRIMARY);
         add(title, BorderLayout.NORTH);
@@ -61,7 +61,7 @@ final class FoodOrderPanel extends JPanel {
             prices.put(id, new BigDecimal(p[3]));
             names.put(id, p[1]);
             UiTheme.RoundedPanel card = UiTheme.surface();
-            card.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+            card.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
             card.setLayout(new BorderLayout(0, 8));
             JTextArea name = new JTextArea(p[1]);
             name.setEditable(false);

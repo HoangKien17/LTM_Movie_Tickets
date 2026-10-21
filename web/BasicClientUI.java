@@ -92,6 +92,13 @@ public final class BasicClientUI extends JFrame {
     private final JLabel bookingCount = label("", 13, Font.PLAIN, UiTheme.MUTED);
     private final JLabel pageContext = label("", 12, Font.PLAIN, UiTheme.MUTED);
 
+    private final JCheckBox rememberLogin = new JCheckBox("Ghi nhớ tài khoản");
+    private final ShowtimePanel homeShowtimes = new ShowtimePanel(this::chooseShow);
+    private MovieItem activeMovie;
+    private final JLabel bookingFilm = label("Chưa chọn suất chiếu", 15, Font.BOLD, UiTheme.TEXT);
+    private final JLabel bookingMeta = label("Chọn phim và suất chiếu để bắt đầu", 12, Font.PLAIN, UiTheme.MUTED);
+    private final JLabel ticketSubtotal = label("0 ₫", 14, Font.BOLD, UiTheme.TEXT);
+    private final JLabel foodSubtotal = label("0 ₫", 14, Font.BOLD, UiTheme.TEXT);
     private final JTextField loginName = UiTheme.field(24);
     private final JPasswordField loginPassword = UiTheme.password(24);
     private final JTextField registerName = UiTheme.field(24);
@@ -119,7 +126,6 @@ public final class BasicClientUI extends JFrame {
     private boolean updatingShowPicker;
     private final SeatMapPanel seatGrid = new SeatMapPanel();
     private final JLabel seatTitle = label("Chọn một suất chiếu để xem ghế", 16, Font.BOLD, UiTheme.TEXT);
-    private final JLabel seatHint = label("Viền tím: còn trống   •   Cyan: đang chọn   •   Xám: đã đặt / đang giữ", 12, Font.PLAIN, UiTheme.MUTED);
     private final JLabel selectedSeats = label("Chưa chọn ghế", 13, Font.PLAIN, UiTheme.MUTED);
     private final JLabel totalPrice = label("0 ₫", 20, Font.BOLD, UiTheme.PRIMARY);
     private final List<UiTheme.SeatButton> seatButtons = new ArrayList<>();
@@ -150,7 +156,7 @@ public final class BasicClientUI extends JFrame {
     public BasicClientUI() {
         super("Galaxy Cinema");
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        setSize(1440, 920);
+        setSize(1440, 900);
         setMinimumSize(new Dimension(1100, 760));
         setLocationRelativeTo(null);
         getContentPane().setBackground(UiTheme.BACKGROUND);
@@ -168,6 +174,11 @@ public final class BasicClientUI extends JFrame {
         footer.add(status, BorderLayout.CENTER);
         add(footer, BorderLayout.SOUTH);
         screenLayout.show(screens, "LOGIN");
+        try {
+            String saved = java.util.prefs.Preferences.userNodeForPackage(BasicClientUI.class).get("loginName", "");
+            loginName.setText(saved);
+            rememberLogin.setSelected(!saved.isEmpty());
+        } catch (SecurityException ignored) { }
         loginPassword.addActionListener(event -> login());
         loginName.addActionListener(event -> login());
         registerPassword.addActionListener(event -> register());
@@ -188,69 +199,94 @@ public final class BasicClientUI extends JFrame {
             form.add(authField("Mật khẩu (ít nhất 6 ký tự)", passwordBox(registerPassword)));
             return authScreen("Tạo tài khoản", "Bắt đầu hành trình điện ảnh của bạn.",
                     form, "Đăng ký", this::register, "Đã có tài khoản? Đăng nhập",
-                    () -> screenLayout.show(screens, "LOGIN"), 565);
+                    () -> screenLayout.show(screens, "LOGIN"), 620);
         }
         form.add(authField("Email hoặc số điện thoại", loginName));
         form.add(authField("Mật khẩu", passwordBox(loginPassword)));
         return authScreen("Chào mừng trở lại", "Đặt vé nhanh, dễ dàng.",
                 form, "Đăng nhập", this::login, "Chưa có tài khoản? Đăng ký ngay",
-                () -> screenLayout.show(screens, "REGISTER"), 430);
+                () -> screenLayout.show(screens, "REGISTER"), 490);
     }
 
     private JPanel authScreen(String heading, String subtitle, JPanel form,
             String actionText, Runnable action, String switchText,
             Runnable switchAction, int cardHeight) {
-        JPanel screen = new JPanel(new GridLayout(1, 2));
-        screen.add(new CinemaPanel());
+        JPanel screen = new AuthBackdrop();
+        screen.setLayout(new GridLayout(1, 2, 24, 0));
+        screen.setBorder(new EmptyBorder(28, 44, 28, 44));
+        JPanel left = new JPanel(new BorderLayout());
+        left.setOpaque(false);
+        JLabel brand = new JLabel("GALAXY CINEMA", UiTheme.orbitIcon(44), SwingConstants.LEFT);
+        brand.setIconTextGap(14);
+        brand.setFont(UiTheme.font(24, Font.BOLD));
+        left.add(brand, BorderLayout.NORTH);
+        JPanel words = new JPanel();
+        words.setOpaque(false);
+        words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
+        words.add(authLabel("Mỗi suất chiếu,", 38, Font.BOLD, UiTheme.TEXT));
+        words.add(authLabel("một trải nghiệm", 38, Font.BOLD, UiTheme.TEXT));
+        words.add(authLabel("mới.", 44, Font.BOLD, UiTheme.PRIMARY));
+        words.add(Box.createVerticalStrut(20));
+        JTextArea copy = UiTheme.copy("Chọn phim yêu thích. Giữ chỗ hoàn hảo.", 15);
+        copy.setMaximumSize(new Dimension(440, 70));
+        words.add(copy);
+        for (Component child : words.getComponents())
+            if (child instanceof JComponent) ((JComponent) child).setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel wordsPosition = new JPanel(new BorderLayout());
+        wordsPosition.setOpaque(false);
+        wordsPosition.setBorder(new EmptyBorder(78, 0, 0, 0));
+        wordsPosition.add(words, BorderLayout.NORTH);
+        left.add(wordsPosition, BorderLayout.CENTER);
+        left.add(authLabel("ĐẶT VÉ  •  CHỌN GHẾ  •  TẬN HƯỞNG", 11, Font.BOLD, UiTheme.MUTED), BorderLayout.SOUTH);
+        screen.add(left);
 
         JPanel right = new JPanel(new GridBagLayout());
-        right.setBackground(UiTheme.BACKGROUND);
-        JPanel card = new AuthCard();
+        right.setOpaque(false);
+        JPanel card = UiTheme.glass();
         card.setLayout(new BorderLayout());
-        card.setBorder(BorderFactory.createEmptyBorder(31, 34, 28, 34));
-        card.setPreferredSize(new Dimension(390, cardHeight));
+        card.setBorder(new EmptyBorder(30, 28, 26, 28));
+        card.setPreferredSize(new Dimension(440, cardHeight));
         JPanel content = new JPanel(new GridBagLayout());
         content.setOpaque(false);
-
+        boolean registering = "Đăng ký".equals(actionText);
+        JPanel tabs = new JPanel(new GridLayout(1, 2, 8, 0));
+        tabs.setOpaque(false);
+        JButton loginTab = registering ? UiTheme.subtle("Đăng nhập") : UiTheme.secondary("Đăng nhập");
+        JButton registerTab = registering ? UiTheme.secondary("Đăng ký") : UiTheme.subtle("Đăng ký");
+        loginTab.addActionListener(e -> screenLayout.show(screens, "LOGIN"));
+        registerTab.addActionListener(e -> screenLayout.show(screens, "REGISTER"));
+        tabs.add(loginTab);
+        tabs.add(registerTab);
         int row = 0;
-        addAuthRow(content, authLabel("GALAXY CINEMA", 12, Font.BOLD, UiTheme.PRIMARY), row++, 13);
-        addAuthRow(content, authLabel(heading, 25, Font.BOLD, UiTheme.TEXT), row++, 4);
-        addAuthRow(content, authLabel(subtitle, 12, Font.PLAIN, UiTheme.MUTED), row++, 23);
-        addAuthRow(content, form, row++, 20);
-
-        if ("Đăng nhập".equals(actionText)) {
-            JPanel options = new JPanel(new BorderLayout());
+        addAuthRow(content, tabs, row++, 24);
+        addAuthRow(content, authLabel(heading, 25, Font.BOLD, UiTheme.TEXT), row++, 8);
+        addAuthRow(content, UiTheme.copy(subtitle, 12), row++, 22);
+        addAuthRow(content, form, row++, 18);
+        if (!registering) {
+            JPanel options = new JPanel(new BorderLayout(4, 0));
             options.setOpaque(false);
-            JCheckBox remember = new JCheckBox("Ghi nhớ đăng nhập");
-            remember.setOpaque(false);
-            remember.setForeground(UiTheme.MUTED);
-            remember.setFont(UiTheme.font(12, Font.PLAIN));
-            remember.setFocusable(false);
-            options.add(remember, BorderLayout.WEST);
+            rememberLogin.setOpaque(false);
+            rememberLogin.setForeground(UiTheme.MUTED);
+            rememberLogin.setFont(UiTheme.font(12, Font.PLAIN));
+            options.add(rememberLogin, BorderLayout.WEST);
             JButton help = new JButton("Quên mật khẩu?");
             help.setFont(UiTheme.font(12, Font.PLAIN));
             help.setForeground(UiTheme.PURPLE);
-            help.setBorderPainted(false);
+            help.setBorder(new EmptyBorder(4, 0, 4, 0));
             help.setContentAreaFilled(false);
-            help.addActionListener(event -> JOptionPane.showMessageDialog(this,
-                    "Hãy đăng nhập bằng tài khoản hiện có, sau đó chọn Thông tin cá nhân để đổi mật khẩu.",
+            help.addActionListener(e -> JOptionPane.showMessageDialog(this,
+                    "Vui lòng liên hệ quản trị viên để được hỗ trợ khôi phục tài khoản.",
                     "Khôi phục tài khoản", JOptionPane.INFORMATION_MESSAGE));
             options.add(help, BorderLayout.EAST);
-            addAuthRow(content, options, row++, 16);
+            addAuthRow(content, options, row++, 18);
         }
-
-        JButton submit = UiTheme.primary(actionText);
-        submit.setPreferredSize(new Dimension(320, 44));
-        submit.addActionListener(event -> action.run());
-        addAuthRow(content, submit, row++, 13);
-
-        JButton switchPage = new JButton(switchText);
-        switchPage.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        switchPage.setForeground(UiTheme.PRIMARY);
-        switchPage.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-        switchPage.setContentAreaFilled(false);
-        switchPage.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        switchPage.addActionListener(event -> switchAction.run());
+        JButton submit = UiTheme.primary(actionText + "   →");
+        submit.setPreferredSize(new Dimension(320, 48));
+        submit.addActionListener(e -> action.run());
+        addAuthRow(content, submit, row++, 14);
+        JButton switchPage = UiTheme.subtle(switchText);
+        switchPage.setFont(UiTheme.font(12, Font.PLAIN));
+        switchPage.addActionListener(e -> switchAction.run());
         addAuthRow(content, switchPage, row, 0);
         card.add(content, BorderLayout.CENTER);
         right.add(card);
@@ -289,13 +325,13 @@ public final class BasicClientUI extends JFrame {
 
     private static JLabel authLabel(String value, int size, int weight, Color color) {
         JLabel label = new JLabel(value);
-        label.setFont(new Font("SansSerif", weight, size));
+        label.setFont(UiTheme.font(size, weight));
         label.setForeground(color);
         return label;
     }
 
     private static void styleAuthInput(JTextField input) {
-        input.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        input.setFont(UiTheme.font(14, Font.PLAIN));
         input.setForeground(UiTheme.TEXT);
         input.setBackground(UiTheme.BACKGROUND);
         input.setCaretColor(UiTheme.PRIMARY);
@@ -345,122 +381,9 @@ public final class BasicClientUI extends JFrame {
         }
     }
 
-    private static final class PurpleButton extends JButton {
-
-        private PurpleButton(String text) {
-            super(text);
-            setForeground(Color.WHITE);
-            setFont(new Font("SansSerif", Font.BOLD, 13));
-            setBorderPainted(false);
-            setContentAreaFilled(false);
-            setFocusPainted(false);
-            setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setPaint(new GradientPaint(0, 0, new Color(98, 66, 205),
-                    getWidth(), getHeight(), new Color(60, 36, 151)));
-            g.fillRoundRect(0, 0, getWidth(), getHeight(), 11, 11);
-            g.dispose();
-            super.paintComponent(graphics);
-        }
-    }
-
-    private static final class AuthCard extends JPanel {
-
-        private AuthCard() {
-            setOpaque(false);
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(new Color(92, 226, 239, 20));
-            g.fillRoundRect(7, 10, getWidth() - 14, getHeight() - 12, 20, 20);
-            g.setPaint(new GradientPaint(0, 0, new Color(19, 30, 54), getWidth(), getHeight(), UiTheme.SURFACE));
-            g.fillRoundRect(1, 1, getWidth() - 8, getHeight() - 10, 15, 15);
-            g.setColor(new Color(102, 235, 255, 125));
-            g.drawRoundRect(1, 1, getWidth() - 8, getHeight() - 10, 15, 15);
-            g.dispose();
-            super.paintComponent(graphics);
-        }
-    }
-
-    private static final class CinemaPanel extends JPanel {
-
-        private static final BufferedImage ARTWORK = loadArtwork();
-
-        private CinemaPanel() {
-            setOpaque(false);
-        }
-
-        private static BufferedImage loadArtwork() {
-            try {
-                return ImageIO.read(new File("assets/galaxy-cinema-auth.png"));
-            } catch (IOException exception) {
-                return null;
-            }
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            int w = getWidth();
-            int h = getHeight();
-            g.setPaint(new GradientPaint(0, 0, new Color(10, 12, 29),
-                    w, h, new Color(8, 28, 52)));
-            g.fillRect(0, 0, w, h);
-            g.setColor(new Color(125, 78, 220, 32));
-            g.fillOval(-w / 3, -h / 4, w, h / 2);
-
-            g.setFont(new Font("SansSerif", Font.BOLD, 25));
-            g.setColor(UiTheme.PRIMARY);
-            g.drawString("GALAXY CINEMA", 36, 70);
-            g.setPaint(new GradientPaint(36, 95, new Color(255, 216, 154),
-                    116, 95, UiTheme.PURPLE));
-            g.fillRoundRect(36, 91, 80, 3, 3, 3);
-
-            g.setFont(new Font("SansSerif", Font.BOLD, 30));
-            g.setColor(Color.WHITE);
-            g.drawString("Trải nghiệm", 36, 169);
-            g.setColor(UiTheme.PRIMARY);
-            g.drawString("màn ảnh rộng lớn.", 36, 208);
-            g.setFont(new Font("SansSerif", Font.PLAIN, 14));
-            g.setColor(new Color(203, 211, 230));
-            g.drawString("Chọn phim, ghế và combo trong một", 36, 246);
-            g.drawString("hành trình đặt vé liền mạch.", 36, 267);
-
-            int artTop = 315;
-            int artBottom = h - 56;
-            if (ARTWORK != null && artBottom > artTop) {
-                int availableHeight = artBottom - artTop;
-                int artWidth = w + 24;
-                int artHeight = Math.round(artWidth * (float) ARTWORK.getHeight() / ARTWORK.getWidth());
-                int artX = (w - artWidth) / 2;
-                int artY = artTop + (availableHeight - artHeight) / 2;
-                g.drawImage(ARTWORK, artX, artY, artWidth, artHeight, null);
-            }
-
-            g.setFont(new Font("SansSerif", Font.BOLD, 10));
-            g.setColor(new Color(173, 181, 207));
-            g.drawString("KHÁM PHÁ  ·  ĐẶT VÉ  ·  THƯỞNG THỨC", 36, h - 31);
-            g.dispose();
-        }
-    }
-
     private JPanel buildMain() {
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(UiTheme.BACKGROUND);
-        // Giữ các nút sidebar ẩn để phân quyền/quy tắc điều hướng cũ không đổi;
-        // khách hàng dùng thanh điều hướng ngang giống giao diện thiết kế mới.
-        buildSidebar();
         JPanel right = new JPanel(new BorderLayout());
         right.setOpaque(false);
         right.add(buildHeader(), BorderLayout.NORTH);
@@ -481,142 +404,70 @@ public final class BasicClientUI extends JFrame {
         return root;
     }
 
-    private JPanel buildSidebar() {
-        JPanel sidebar = new JPanel(new BorderLayout());
-        sidebar.setBackground(UiTheme.NAVY);
-        sidebar.setPreferredSize(new Dimension(178, 0));
-        sidebar.setBorder(new EmptyBorder(18, 14, 20, 14));
-        JPanel top = new JPanel();
-        top.setOpaque(false);
-        top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-        JLabel mark = label("MENU", 10, Font.BOLD, UiTheme.MUTED);
-        mark.setBorder(new EmptyBorder(0, 12, 0, 0));
-        top.add(mark);
-        top.add(Box.createVerticalStrut(20));
-        top.add(sideCaption("KHÁM PHÁ"));
-        top.add(Box.createVerticalStrut(9));
-        top.add(nav("MOVIES", "01   Trang chủ"));
-        top.add(Box.createVerticalStrut(6));
-        top.add(nav("SHOWS", "02   Lịch chiếu"));
-        top.add(Box.createVerticalStrut(6));
-        top.add(nav("BOOKINGS", "03   Vé của tôi"));
-        staffNavGroup = new JPanel();
-        staffNavGroup.setOpaque(false);
-        staffNavGroup.setLayout(new BoxLayout(staffNavGroup, BoxLayout.Y_AXIS));
-        staffNavGroup.add(Box.createVerticalStrut(6));
-        staffNavGroup.add(nav("CHECK_IN", "04   Soát vé"));
-        staffNavGroup.setVisible(false);
-        top.add(staffNavGroup);
-        adminNavGroup = new JPanel();
-        adminNavGroup.setOpaque(false);
-        adminNavGroup.setLayout(new BoxLayout(adminNavGroup, BoxLayout.Y_AXIS));
-        adminNavGroup.add(Box.createVerticalStrut(28));
-        adminNavGroup.add(sideCaption("HỆ THỐNG"));
-        adminNavGroup.add(Box.createVerticalStrut(9));
-        adminNavGroup.add(nav("ADMIN", "05   Quản trị"));
-        adminNavGroup.add(Box.createVerticalStrut(6));
-        adminNavGroup.add(nav("MONITOR", "06   Giám sát server"));
-        adminNavGroup.setVisible(false);
-        top.add(adminNavGroup);
-        sidebar.add(top, BorderLayout.NORTH);
-        JPanel bottom = new JPanel();
-        bottom.setOpaque(false);
-        bottom.setLayout(new BoxLayout(bottom, BoxLayout.Y_AXIS));
-        bottom.add(label("GALAXY CINEMA", 12, Font.BOLD, UiTheme.PRIMARY));
-        bottom.add(Box.createVerticalStrut(5));
-        bottom.add(label("Đặt vé • QR • Tận hưởng", 10,
-                Font.PLAIN, new Color(166, 179, 208)));
-        sidebar.add(bottom, BorderLayout.SOUTH);
-        return sidebar;
-    }
-
-    private JLabel sideCaption(String text) {
-        JLabel caption = label(text, 10, Font.BOLD, new Color(124, 142, 176));
-        caption.setBorder(new EmptyBorder(0, 12, 0, 0));
-        return caption;
-    }
-
-    private NavButton nav(String key, String text) {
-        NavButton button = new NavButton(text);
-        button.addActionListener(event -> navigate(key));
-        navigation.put(key, button);
-        return button;
-    }
-
     private JPanel buildHeader() {
-        JPanel header = new JPanel(new BorderLayout(14, 0));
+        JPanel header = new JPanel(new BorderLayout(0, 8));
         header.setBackground(UiTheme.NAVY);
         header.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, UiTheme.LINE),
-                new EmptyBorder(14, 27, 14, 27)));
-        JPanel brand = new JPanel(new BorderLayout(8, 0));
-        brand.setOpaque(false);
-        JLabel orbit = label("G", 26, Font.BOLD, UiTheme.PRIMARY);
-        orbit.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(UiTheme.PRIMARY, 2, true), new EmptyBorder(1, 6, 1, 6)));
-        brand.add(orbit, BorderLayout.WEST);
-        JLabel name = label("GALAXY CINEMA", 21, Font.BOLD, UiTheme.WHITE);
-        brand.add(name, BorderLayout.CENTER);
-        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 18, 0));
+                BorderFactory.createMatteBorder(0, 0, 1, 0, UiTheme.LINE), new EmptyBorder(12, 24, 12, 24)));
+        JPanel row = new JPanel(new BorderLayout(18, 0));
+        row.setOpaque(false);
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         left.setOpaque(false);
+        JLabel brand = new JLabel("GALAXY CINEMA", UiTheme.orbitIcon(36), SwingConstants.LEFT);
+        brand.setFont(UiTheme.font(19, Font.BOLD));
+        brand.setIconTextGap(10);
         left.add(brand);
         left.add(headerNav("Trang chủ", "MOVIES"));
-        left.add(headerNav("Phim", "MOVIES"));
         left.add(headerNav("Lịch chiếu", "SHOWS"));
         left.add(headerNav("Vé của tôi", "BOOKINGS"));
-        header.add(left, BorderLayout.WEST);
-        JPanel searchBox = new JPanel(new BorderLayout(9, 0));
-        searchBox.setOpaque(false);
-        JLabel glass = label("TÌM", 11, Font.BOLD, UiTheme.PRIMARY);
-        searchBox.add(glass, BorderLayout.WEST);
-        movieSearch.setPreferredSize(new Dimension(340, 42));
-        movieSearch.setToolTipText("Tìm phim, thể loại...");
-        searchBox.add(movieSearch, BorderLayout.CENTER);
-        header.add(searchBox, BorderLayout.CENTER);
-        JPanel userBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 9, 0));
+        row.add(left, BorderLayout.WEST);
+        movieSearch.setPreferredSize(new Dimension(220, 40));
+        movieSearch.setMinimumSize(new Dimension(130, 40));
+        row.add(movieSearch, BorderLayout.CENTER);
+        JPanel userBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         userBox.setOpaque(false);
-        UiTheme.StyledButton myTickets = action("Vé của tôi", () -> navigate("BOOKINGS"), "secondary");
-        myTickets.setPreferredSize(new Dimension(104, 38));
-        userBox.add(myTickets);
-        pageContext.setHorizontalAlignment(SwingConstants.RIGHT);
-        userBox.add(pageContext);
+        userLabel.setPreferredSize(new Dimension(125, 38));
+        userLabel.setHorizontalAlignment(SwingConstants.RIGHT);
         userBox.add(userLabel);
         AvatarButton avatar = new AvatarButton();
-        avatar.setToolTipText("Tài khoản • Thông tin cá nhân • Đăng xuất");
         JPopupMenu accountMenu = new JPopupMenu();
         JMenuItem profile = new JMenuItem("Thông tin cá nhân");
-        profile.addActionListener(event -> openProfile());
+        profile.addActionListener(e -> openProfile());
         JMenuItem signOut = new JMenuItem("Đăng xuất");
-        signOut.addActionListener(event -> logout());
+        signOut.addActionListener(e -> logout());
         accountMenu.add(profile);
         accountMenu.addSeparator();
         accountMenu.add(signOut);
-        avatar.addActionListener(event -> accountMenu.show(avatar, 0, avatar.getHeight() + 3));
+        avatar.addActionListener(e -> accountMenu.show(avatar, 0, avatar.getHeight() + 3));
         userBox.add(avatar);
-        header.add(userBox, BorderLayout.EAST);
+        row.add(userBox, BorderLayout.EAST);
+        header.add(row, BorderLayout.NORTH);
+        JPanel roleTools = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        roleTools.setOpaque(false);
+        staffNavGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        staffNavGroup.setOpaque(false);
+        staffNavGroup.add(headerNav("Soát vé", "CHECK_IN"));
+        staffNavGroup.setVisible(false);
+        adminNavGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        adminNavGroup.setOpaque(false);
+        adminNavGroup.add(headerNav("Quản trị", "ADMIN"));
+        adminNavGroup.add(headerNav("Giám sát server", "MONITOR"));
+        adminNavGroup.setVisible(false);
+        roleTools.add(staffNavGroup);
+        roleTools.add(adminNavGroup);
+        // Empty role containers take no space for ordinary customers.
+        roleTools.setBorder(new EmptyBorder(0, 0, 0, 0));
+        header.add(roleTools, BorderLayout.SOUTH);
         return header;
     }
 
     private JButton headerNav(String text, String page) {
-        JButton button = new JButton(text);
-        button.setFont(UiTheme.font(12, Font.BOLD));
-        button.setForeground(UiTheme.MUTED);
-        button.setBorder(BorderFactory.createEmptyBorder(9, 5, 9, 5));
-        button.setContentAreaFilled(false);
-        button.setFocusPainted(false);
-        button.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        button.addActionListener(event -> navigate(page));
-        button.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseEntered(java.awt.event.MouseEvent event) {
-                button.setForeground(UiTheme.PRIMARY);
-            }
-
-            @Override
-            public void mouseExited(java.awt.event.MouseEvent event) {
-                button.setForeground(UiTheme.MUTED);
-            }
-        });
+        NavButton button = new NavButton(text);
+        button.setPreferredSize(new Dimension(Math.max(76, text.length() * 8 + 22), 38));
+        button.setMaximumSize(button.getPreferredSize());
+        button.setHorizontalAlignment(SwingConstants.CENTER);
+        button.addActionListener(e -> navigate(page));
+        navigation.put(page, button);
         return button;
     }
 
@@ -624,7 +475,6 @@ public final class BasicClientUI extends JFrame {
         JPanel page = page();
         JPanel north = new JPanel(new BorderLayout(0, 18));
         north.setOpaque(false);
-        north.add(new BookingSteps(0), BorderLayout.NORTH);
         north.add(hero, BorderLayout.CENTER);
         JPanel head = new JPanel(new BorderLayout());
         head.setOpaque(false);
@@ -639,6 +489,7 @@ public final class BasicClientUI extends JFrame {
         tools.setOpaque(false);
         movieSearch.getAccessibleContext().setAccessibleName("Tìm phim theo tên hoặc thể loại");
         tools.add(action("Xem tất cả", () -> {
+            activeGenre = "";
             movieSearch.setText("");
             loadMovies();
         }, "secondary"));
@@ -677,12 +528,12 @@ public final class BasicClientUI extends JFrame {
                 renderMovies();
             }
         });
-        page.add(scroll, BorderLayout.CENTER);
-        JPanel heroActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        heroActions.setOpaque(false);
-        heroActions.add(action("‹", () -> changeHero(-1), "subtle"));
-        heroActions.add(action("›", () -> changeHero(1), "subtle"));
-        hero.add(heroActions, BorderLayout.EAST);
+        JPanel columns = new JPanel(new BorderLayout(20, 0));
+        columns.setOpaque(false);
+        columns.add(scroll, BorderLayout.CENTER);
+        columns.add(homeShowtimes, BorderLayout.EAST);
+        page.add(new BookingSteps(0), BorderLayout.NORTH);
+        page.add(columns, BorderLayout.CENTER);
         heroTimer = new javax.swing.Timer(7000, e -> {
             if ("MOVIES".equals(activePage) && hero.isShowing()) {
                 changeHero(1);
@@ -700,7 +551,7 @@ public final class BasicClientUI extends JFrame {
         MovieItem movie = movies.get(heroIndex);
         hero.caption("PHIM NỔI BẬT  /  " + (heroIndex + 1) + " TRÊN " + movies.size());
         hero.movie(movie.title, movie.genre + "  •  " + movie.minutes + " phút", movie.poster,
-                () -> openMovie(movie));
+                () -> selectMovie(movie));
     }
 
     private JPanel buildMovieDetails() {
@@ -731,10 +582,33 @@ public final class BasicClientUI extends JFrame {
         return page;
     }
 
+    private void selectMovie(MovieItem movie) {
+        if (busy) return;
+        activeMovie = movie;
+        homeShowtimes.movie(movie.id, movie.title, movie.genre + " • " + movie.minutes + " phút", movie.poster);
+        hero.movie(movie.title, movie.genre + " • " + movie.minutes + " phút", movie.poster,
+                () -> openMovie(movie));
+        renderMovies();
+        loadShows(movie.id);
+    }
+
+    private void chooseShow(int showId) {
+        if (busy) return;
+        for (int i = 0; i < showModel.getRowCount(); i++) {
+            if (Integer.toString(showId).equals(showModel.getValueAt(i, 0).toString())) {
+                navigate("SHOWS", false);
+                showTable.setRowSelectionInterval(i, i);
+                return;
+            }
+        }
+        showError("Suất chiếu đã thay đổi. Hãy chọn lại phim để tải lịch mới.");
+    }
+
     private void openMovie(MovieItem movie) {
         if (busy) {
             return;
         }
+        activeMovie = movie;
         movieDetails.removeAll();
         CinemaBanner banner = new CinemaBanner();
         banner.caption("CHI TIẾT PHIM  /  GALAXY CINEMA");
@@ -826,39 +700,81 @@ public final class BasicClientUI extends JFrame {
         page.add(top, BorderLayout.NORTH);
 
         UiTheme.RoundedPanel seatCard = UiTheme.surface();
-        seatCard.setLayout(new BorderLayout(0, 14));
-        JPanel seatHeader = new JPanel(new BorderLayout());
+        seatCard.setLayout(new BorderLayout(0, 16));
+        JPanel seatHeader = new JPanel(new BorderLayout(10, 0));
         seatHeader.setOpaque(false);
-        JPanel titles = new JPanel();
+        JPanel titles = new JPanel(new GridLayout(2, 1, 0, 4));
         titles.setOpaque(false);
-        titles.setLayout(new BoxLayout(titles, BoxLayout.Y_AXIS));
+        titles.add(label("Chọn chỗ ngồi của bạn", 23, Font.BOLD, UiTheme.TEXT));
         titles.add(seatTitle);
-        titles.add(Box.createVerticalStrut(4));
-        titles.add(seatHint);
+        seatTitle.setFont(UiTheme.font(12, Font.PLAIN));
+        seatTitle.setForeground(UiTheme.MUTED);
         seatHeader.add(titles, BorderLayout.CENTER);
-        seatHeader.add(action("Tải lại ghế", this::loadSeats, "subtle"), BorderLayout.EAST);
+        seatHeader.add(action("Tải lại", this::loadSeats, "subtle"), BorderLayout.EAST);
         seatCard.add(seatHeader, BorderLayout.NORTH);
-        seatGrid.setBackground(UiTheme.SURFACE);
-        seatGrid.setBorder(new EmptyBorder(8, 5, 12, 5));
+        seatGrid.setOpaque(false);
         JScrollPane seatScroll = UiTheme.scroll(seatGrid);
-        JPanel selection = new JPanel(new BorderLayout(16, 0));
-        selection.setOpaque(false);
-        selection.add(seatScroll, BorderLayout.CENTER);
-        selection.add(foodOrder, BorderLayout.EAST);
-        seatCard.add(selection, BorderLayout.CENTER);
-        JPanel summary = new JPanel(new BorderLayout(15, 0));
-        summary.setOpaque(false);
-        summary.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, UiTheme.LINE));
-        JPanel sumText = new JPanel(new GridLayout(2, 1, 0, 3));
-        sumText.setOpaque(false);
-        sumText.setBorder(new EmptyBorder(12, 0, 0, 0));
-        sumText.add(selectedSeats);
-        sumText.add(totalPrice);
-        summary.add(sumText, BorderLayout.CENTER);
-        summary.add(action("Tiếp tục thanh toán", this::book, "primary"), BorderLayout.EAST);
-        seatCard.add(summary, BorderLayout.SOUTH);
-        page.add(seatCard, BorderLayout.CENTER);
+        seatScroll.getViewport().setBackground(UiTheme.SURFACE);
+        seatCard.add(seatScroll, BorderLayout.CENTER);
+        JPanel legend = new JPanel(new BorderLayout(0, 10));
+        legend.setOpaque(false);
+        JPanel swatches = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 2));
+        swatches.setOpaque(false);
+        swatches.add(UiTheme.legend("Còn trống", UiTheme.PRIMARY));
+        swatches.add(UiTheme.legend("Đang chọn", UiTheme.SELECTED));
+        swatches.add(UiTheme.legend("Đã đặt / đang giữ", UiTheme.MUTED));
+        legend.add(swatches, BorderLayout.CENTER);
+        JLabel limit = label("Bạn có thể chọn tối đa 10 ghế mỗi đơn", 11, Font.PLAIN, UiTheme.MUTED);
+        limit.setHorizontalAlignment(SwingConstants.CENTER);
+        legend.add(limit, BorderLayout.SOUTH);
+        seatCard.add(legend, BorderLayout.SOUTH);
+
+        UiTheme.RoundedPanel summary = UiTheme.glass();
+        summary.setPreferredSize(new Dimension(320, 0));
+        summary.setLayout(new BorderLayout(0, 16));
+        JPanel movie = new JPanel(new GridLayout(3, 1, 0, 6));
+        movie.setOpaque(false);
+        movie.add(label("Thông tin đặt vé", 19, Font.BOLD, UiTheme.TEXT));
+        movie.add(bookingFilm);
+        movie.add(bookingMeta);
+        summary.add(movie, BorderLayout.NORTH);
+        summary.add(foodOrder, BorderLayout.CENTER);
+        JPanel bill = new JPanel();
+        bill.setOpaque(false);
+        bill.setLayout(new BoxLayout(bill, BoxLayout.Y_AXIS));
+        selectedSeats.setForeground(UiTheme.PRIMARY);
+        selectedSeats.setFont(UiTheme.font(14, Font.BOLD));
+        bill.add(selectedSeats);
+        bill.add(Box.createVerticalStrut(12));
+        bill.add(billRow("Tiền vé", ticketSubtotal));
+        bill.add(Box.createVerticalStrut(6));
+        bill.add(billRow("Bắp nước", foodSubtotal));
+        bill.add(Box.createVerticalStrut(12));
+        bill.add(billRow("Tổng thanh toán", totalPrice));
+        bill.add(Box.createVerticalStrut(16));
+        JButton pay = action("Xác nhận & thanh toán  →", this::book, "primary");
+        pay.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        pay.setAlignmentX(Component.LEFT_ALIGNMENT);
+        bill.add(pay);
+        summary.add(bill, BorderLayout.SOUTH);
+        JPanel columns = new JPanel(new BorderLayout(18, 0));
+        columns.setOpaque(false);
+        columns.add(seatCard, BorderLayout.CENTER);
+        columns.add(summary, BorderLayout.EAST);
+        page.add(columns, BorderLayout.CENTER);
         return page;
+    }
+
+    private JPanel billRow(String caption, JLabel amount) {
+        JPanel row = new JPanel(new BorderLayout(6, 0));
+        row.setOpaque(false);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+        row.add(label(caption, 12, Font.PLAIN, UiTheme.MUTED), BorderLayout.WEST);
+        amount.setHorizontalAlignment(SwingConstants.RIGHT);
+        amount.setBorder(new EmptyBorder(0, 0, 0, 0));
+        row.add(amount, BorderLayout.CENTER);
+        return row;
     }
 
     private JPanel buildBookings() {
@@ -1089,7 +1005,12 @@ public final class BasicClientUI extends JFrame {
                 showError("Phản hồi đăng nhập không hợp lệ");
                 return;
             }
-            userLabel.setText("Xin chào, " + dec(data[3]));
+            userLabel.setText("Chào " + dec(data[3]));
+            userLabel.setToolTipText(dec(data[3]));
+            try {
+                java.util.prefs.Preferences prefs = java.util.prefs.Preferences.userNodeForPackage(BasicClientUI.class);
+                if (rememberLogin.isSelected()) prefs.put("loginName", name); else prefs.remove("loginName");
+            } catch (SecurityException ignored) { }
             admin = "admin".equals(dec(data[5]));
             staff = admin || "staff".equals(dec(data[5]));
             adminNavGroup.setVisible(admin);
@@ -1191,6 +1112,7 @@ public final class BasicClientUI extends JFrame {
                 hero.movie("HẸN BẠN TẠI RẠP", "Danh sách phim sẽ sớm được cập nhật.", null, null);
             } else {
                 changeHero(0);
+                selectMovie(movies.get(0));
             }
             status.setText("Đã tải " + movies.size() + " phim");
         });
@@ -1211,7 +1133,7 @@ public final class BasicClientUI extends JFrame {
         }
         movieCount.setText(matches.size() + " phim • Chọn phim để xem lịch chiếu");
         int width = movieGrid.getParent() == null ? 1080 : Math.max(600, movieGrid.getParent().getWidth() - 30);
-        int columns = Math.max(2, Math.min(4, width / 240));
+        int columns = Math.max(2, Math.min(4, width / 195));
         GridBagLayout gridLayout = (GridBagLayout) movieGrid.getLayout();
         gridLayout.columnWidths = null;
         gridLayout.columnWeights = new double[columns];
@@ -1232,8 +1154,8 @@ public final class BasicClientUI extends JFrame {
                 c.anchor = GridBagConstraints.NORTHWEST;
                 c.insets = new Insets(0, 0, 14, 12);
                 JPanel card = movieCard(matches.get(i));
-                card.setPreferredSize(new Dimension(width / columns - 14, 430));
-                card.setMinimumSize(new Dimension(0, 430));
+                card.setPreferredSize(new Dimension(width / columns - 14, 348));
+                card.setMinimumSize(new Dimension(0, 348));
                 movieGrid.add(card, c);
             }
             // Equal column widths even for an incomplete last row.
@@ -1243,7 +1165,7 @@ public final class BasicClientUI extends JFrame {
             space.weighty = 1;
             movieGrid.add(Box.createGlue(), space);
         }
-        movieGrid.setPreferredSize(new Dimension(width, Math.max(1, (matches.size() + columns - 1) / columns) * 444 + 14));
+        movieGrid.setPreferredSize(new Dimension(width, Math.max(1, (matches.size() + columns - 1) / columns) * 362 + 14));
         movieGrid.revalidate();
         movieGrid.repaint();
     }
@@ -1278,10 +1200,11 @@ public final class BasicClientUI extends JFrame {
 
     private JPanel movieCard(MovieItem movie) {
         UiTheme.RoundedPanel card = UiTheme.surface();
-        card.setBorder(new EmptyBorder(10, 10, 14, 10));
+        card.setBorder(new EmptyBorder(9, 9, 12, 9));
+        card.putClientProperty("selected", activeMovie != null && activeMovie.id == movie.id);
         card.setLayout(new BorderLayout(0, 10));
-        JPanel poster = movie.poster == null ? new UiTheme.PosterPanel(movie.title) : new PhotoPosterPanel(movie.poster);
-        poster.setPreferredSize(new Dimension(150, 250));
+        JPanel poster = new PosterView(movie.poster, movie.title);
+        poster.setPreferredSize(new Dimension(150, 215));
         card.add(poster, BorderLayout.CENTER);
         JPanel info = new JPanel();
         info.setOpaque(false);
@@ -1302,7 +1225,7 @@ public final class BasicClientUI extends JFrame {
         info.add(Box.createVerticalStrut(7));
         info.add(badges);
         info.add(Box.createVerticalStrut(8));
-        UiTheme.StyledButton booking = action("Chọn suất  →", () -> openMovie(movie), "primary");
+        UiTheme.StyledButton booking = action("Chọn suất  →", () -> selectMovie(movie), "primary");
         booking.setAlignmentX(Component.LEFT_ALIGNMENT);
         booking.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         info.add(booking);
@@ -1366,6 +1289,7 @@ public final class BasicClientUI extends JFrame {
                 showDates.addItem(date);
             }
             renderTimeSlots();
+            homeShowtimes.shows(data);
             foodOrder.reset();
             send("GET_PRODUCTS", response -> {
                 List<String[]> products = rows(response, "PRODUCTS", "PRODUCT", 5);
@@ -1393,6 +1317,10 @@ public final class BasicClientUI extends JFrame {
         seatTitle.setText("Chọn một suất chiếu để xem ghế");
         selectedSeats.setText("Chưa chọn ghế");
         totalPrice.setText("0 ₫");
+        ticketSubtotal.setText("0 ₫");
+        foodSubtotal.setText("0 ₫");
+        bookingFilm.setText("Chưa chọn suất chiếu");
+        bookingMeta.setText("Chọn phim và suất chiếu để bắt đầu");
         seatGrid.revalidate();
         seatGrid.repaint();
     }
@@ -1443,7 +1371,14 @@ public final class BasicClientUI extends JFrame {
                 }
             }
             seatMapShowId = showId;
-            seatTitle.setText("Sơ đồ ghế — suất #" + showId);
+            int selectedRow = showTable.getSelectedRow();
+            String film = selectedRow >= 0 ? showModel.getValueAt(selectedRow, 1).toString() : "Suất #" + showId;
+            String room = selectedRow >= 0 ? showModel.getValueAt(selectedRow, 2).toString() : "";
+            String start = selectedRow >= 0 ? showModel.getValueAt(selectedRow, 3).toString() : "";
+            seatTitle.setText(room + " • " + start);
+            bookingFilm.setText(film);
+            bookingFilm.setToolTipText(film);
+            bookingMeta.setText(room + " • " + start);
             seatButtons.clear();
             seatButtons.addAll(seatGrid.render(data, new HashSet<>(selected), this::updateSelection));
             updateSelection();
@@ -1459,10 +1394,13 @@ public final class BasicClientUI extends JFrame {
             }
         }
         selectedSeats.setText(codes.isEmpty() ? "Chưa chọn ghế"
-                : codes.size() + " ghế: " + String.join(", ", codes));
+                : "<html><div style='width: 240px'>" + codes.size() + " ghế: " + String.join(", ", codes) + "</div></html>");
+        selectedSeats.setToolTipText(String.join(", ", codes));
         BigDecimal price = showPrices.get(selectedShowId());
         BigDecimal seats = price == null ? BigDecimal.ZERO : price.multiply(BigDecimal.valueOf(codes.size()));
         totalPrice.setText(formatMoney(seats.add(foodOrder.total()).toPlainString()));
+        ticketSubtotal.setText(formatMoney(seats.toPlainString()));
+        foodSubtotal.setText(formatMoney(foodOrder.total().toPlainString()));
     }
 
     private void book() {
@@ -2143,6 +2081,8 @@ public final class BasicClientUI extends JFrame {
                 busy = false;
                 try {
                     onSuccess.accept(get());
+                if (!busy && "Đang liên hệ máy chủ...".equals(status.getText()))
+                    status.setText("Sẵn sàng • Đã kết nối máy chủ");
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                     showError("Thao tác bị gián đoạn");
@@ -2228,6 +2168,9 @@ public final class BasicClientUI extends JFrame {
         admin = false;
         adminNavGroup.setVisible(false);
         activePage = "MOVIES";
+        activeMovie = null;
+        activeGenre = "";
+        homeShowtimes.clear();
         movies.clear();
         movieSearch.setText("");
         foodOrder.reset();
@@ -2378,34 +2321,6 @@ public final class BasicClientUI extends JFrame {
         }
     }
 
-    private static final class PhotoPosterPanel extends JPanel {
-
-        private final BufferedImage poster;
-
-        private PhotoPosterPanel(BufferedImage poster) {
-            this.poster = poster;
-            setOpaque(false);
-            setPreferredSize(new Dimension(122, 170));
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            try {
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                        RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-                g.setClip(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 18, 18));
-                double scale = Math.max(getWidth() / (double) poster.getWidth(), getHeight() / (double) poster.getHeight());
-                int w = (int) (poster.getWidth() * scale), h = (int) (poster.getHeight() * scale);
-                g.drawImage(poster, (getWidth() - w) / 2, (getHeight() - h) / 2, w, h, null);
-            } finally {
-                g.dispose();
-            }
-        }
-    }
-
     private static final class MovieItem {
 
         private final int id;
@@ -2525,54 +2440,6 @@ public final class BasicClientUI extends JFrame {
                     g.fillRoundRect(0, 10, 3, getHeight() - 20, 3, 3);
                 }
             }
-            g.dispose();
-            super.paintComponent(graphics);
-        }
-    }
-
-    private static final class BrandPanel extends JPanel {
-
-        BrandPanel() {
-            setOpaque(false);
-            setBorder(new EmptyBorder(82, 42, 42, 42));
-            setLayout(new BorderLayout());
-            JPanel top = new JPanel();
-            top.setOpaque(false);
-            top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-            top.add(label("GALAXY CINEMA", 15, Font.BOLD, UiTheme.GOLD));
-            top.add(Box.createVerticalStrut(80));
-            top.add(label("Mỗi suất chiếu", 29, Font.BOLD, UiTheme.WHITE));
-            top.add(Box.createVerticalStrut(6));
-            top.add(label("một trải nghiệm mới.", 27, Font.BOLD, UiTheme.WHITE));
-            top.add(Box.createVerticalStrut(18));
-            JTextArea copy = new JTextArea("Khám phá phim hay, chọn chỗ ngồi yêu thích và giữ vé chỉ trong vài bước.");
-            copy.setEditable(false);
-            copy.setFocusable(false);
-            copy.setOpaque(false);
-            copy.setLineWrap(true);
-            copy.setWrapStyleWord(true);
-            copy.setForeground(new Color(202, 212, 233));
-            copy.setFont(UiTheme.font(15, Font.PLAIN));
-            copy.setAlignmentX(LEFT_ALIGNMENT);
-            copy.setPreferredSize(new Dimension(310, 100));
-            copy.setMaximumSize(new Dimension(310, 100));
-            top.add(copy);
-            add(top, BorderLayout.NORTH);
-            add(label("KHÁM PHÁ   •   ĐẶT VÉ   •   THƯỞNG THỨC",
-                    10, Font.BOLD, new Color(175, 190, 220)), BorderLayout.SOUTH);
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setPaint(new GradientPaint(0, 0, UiTheme.NAVY, getWidth(), getHeight(), UiTheme.PRIMARY_DARK));
-            g.fillRect(0, 0, getWidth(), getHeight());
-            g.setColor(new Color(255, 255, 255, 14));
-            g.fillOval(getWidth() - 210, 280, 330, 330);
-            g.fillOval(-160, getHeight() - 250, 340, 340);
-            g.setColor(new Color(255, 255, 255, 13));
-            g.fillOval(getWidth() - 60, -70, 180, 180);
             g.dispose();
             super.paintComponent(graphics);
         }

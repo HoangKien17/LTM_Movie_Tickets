@@ -1,13 +1,6 @@
 package web;
 
-import java.awt.BasicStroke;
-import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.GridLayout;
-import java.awt.RenderingHints;
-import javax.swing.BorderFactory;
-import javax.swing.JLabel;
+import java.awt.*;
 import javax.swing.JPanel;
 
 /**
@@ -15,55 +8,51 @@ import javax.swing.JPanel;
  */
 final class BookingSteps extends JPanel {
 
+    private final int current;
+    private static final String[] NAMES = {"Chọn phim", "Suất chiếu", "Chọn ghế", "Thanh toán"};
+
     BookingSteps(int current) {
-        super(new GridLayout(1, 4, 0, 0));
+        this.current = current;
         setOpaque(false);
-        setBorder(BorderFactory.createEmptyBorder(2, 12, 2, 12));
-        String[] names = {"Chọn phim", "Suất chiếu", "Ghế & combo", "Vé & QR"};
-        for (int i = 0; i < names.length; i++) {
-            add(step(i + 1, names[i], i <= current, i == current));
-        }
+        setPreferredSize(new Dimension(600, 54));
+        getAccessibleContext().setAccessibleName("Bước " + (current + 1) + ": " + NAMES[current]);
     }
 
-    private JPanel step(int number, String name, boolean passed, boolean active) {
-        JPanel box = new JPanel(new GridLayout(2, 1, 0, 3));
-        box.setOpaque(false);
-        JLabel circle = new StepCircle(String.valueOf(number), passed, active);
-        circle.setHorizontalAlignment(JLabel.CENTER);
-        JLabel text = new JLabel(number + ". " + name, JLabel.CENTER);
-        text.setFont(UiTheme.font(11, active ? Font.BOLD : Font.PLAIN));
-        text.setForeground(passed ? UiTheme.PRIMARY : UiTheme.MUTED);
-        box.add(circle);
-        box.add(text);
-        return box;
-    }
-
-    private static final class StepCircle extends JLabel {
-
-        private final boolean passed, active;
-
-        StepCircle(String text, boolean passed, boolean active) {
-            super(text);
-            this.passed = passed;
-            this.active = active;
-            setFont(UiTheme.font(12, Font.BOLD));
-            setForeground(passed ? UiTheme.NAVY : UiTheme.MUTED);
-            setOpaque(false);
+    @Override
+    protected void paintComponent(Graphics graphics) {
+        super.paintComponent(graphics);
+        Graphics2D g = (Graphics2D) graphics.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        int cell = getWidth() / 4, y = getHeight() / 2;
+        for (int i = 0; i < 4; i++) {
+            int x = i * cell + 10;
+            boolean active = i == current, passed = i < current;
+            Color color = active ? UiTheme.PRIMARY : passed ? UiTheme.PURPLE : UiTheme.MUTED;
+            if (active) {
+                g.setColor(new Color(92, 226, 239, 22));
+                g.fillOval(x - 5, y - 21, 42, 42);
+            }
+            g.setColor(color);
+            g.setStroke(new BasicStroke(active ? 2 : 1));
+            g.drawOval(x, y - 16, 32, 32);
+            g.setFont(UiTheme.font(12, Font.BOLD));
+            if (passed) {
+                g.setStroke(new BasicStroke(2f));
+                g.drawLine(x + 9, y, x + 14, y + 5);
+                g.drawLine(x + 14, y + 5, x + 23, y - 5);
+            } else {
+                String number = String.format("%02d", i + 1);
+                g.drawString(number, x + (32 - g.getFontMetrics().stringWidth(number)) / 2, y + 5);
+            }
+            g.setFont(UiTheme.font(12, active ? Font.BOLD : Font.PLAIN));
+            g.drawString(NAMES[i], x + 43, y + 5);
+            int start = x + 53 + g.getFontMetrics().stringWidth(NAMES[i]);
+            if (i < 3 && start < (i + 1) * cell - 8) {
+                g.setColor(i < current ? UiTheme.PRIMARY : UiTheme.LINE);
+                g.drawLine(start, y, (i + 1) * cell - 8, y);
+            }
         }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            int size = Math.min(30, Math.min(getWidth(), getHeight()));
-            int x = (getWidth() - size) / 2, y = (getHeight() - size) / 2;
-            g.setColor(passed ? UiTheme.PRIMARY : UiTheme.NAVY_LIGHT);
-            g.fillOval(x, y, size, size);
-            g.setColor(active ? UiTheme.WHITE : (passed ? UiTheme.PRIMARY : UiTheme.LINE));
-            g.setStroke(new BasicStroke(active ? 2f : 1f));
-            g.drawOval(x, y, size - 1, size - 1);
-            g.dispose();
-            super.paintComponent(graphics);
-        }
+        g.dispose();
     }
 }

@@ -40,24 +40,32 @@ public final class SeatMapPanel extends JPanel {
                     Graphics2D g = (Graphics2D) graphics.create();
                     g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     java.awt.geom.QuadCurve2D curve = new java.awt.geom.QuadCurve2D.Double(
-                            8, 22, getWidth() / 2.0, -8, getWidth() - 8, 22);
+                            12, 14, getWidth() / 2.0, 46, getWidth() - 12, 14);
                     for (int stroke = 14; stroke >= 4; stroke -= 2) {
                         g.setStroke(new BasicStroke(stroke));
                         g.setColor(new Color(92, 226, 239, 12));
                         g.draw(curve);
                     }
+                    java.awt.geom.Path2D reflection = new java.awt.geom.Path2D.Double();
+                    reflection.moveTo(12, 14);
+                    reflection.quadTo(getWidth() / 2.0, 46, getWidth() - 12, 14);
+                    reflection.lineTo(getWidth() - 45, 82);
+                    reflection.lineTo(45, 82);
+                    reflection.closePath();
+                    g.setPaint(new GradientPaint(0, 25, new Color(92, 226, 239, 30), 0, 82, new Color(92, 226, 239, 0)));
+                    g.fill(reflection);
                     g.setStroke(new BasicStroke(3));
                     g.setPaint(new GradientPaint(0, 0, UiTheme.PRIMARY, getWidth(), 0, UiTheme.PURPLE));
                     g.draw(curve);
                     g.setColor(UiTheme.MUTED);
                     g.setFont(UiTheme.font(11, Font.BOLD));
                     String text = "M À N  C H I Ế U";
-                    g.drawString(text, (getWidth() - g.getFontMetrics().stringWidth(text)) / 2, 46);
+                    g.drawString(text, (getWidth() - g.getFontMetrics().stringWidth(text)) / 2, 66);
                     g.dispose();
                 }
             };
             screen.setOpaque(false);
-            screen.setPreferredSize(new Dimension(100, 54));
+            screen.setPreferredSize(new Dimension(100, 90));
             GridBagConstraints top = cell(0, 0);
             top.gridwidth = span;
             top.fill = GridBagConstraints.HORIZONTAL;
@@ -73,14 +81,21 @@ public final class SeatMapPanel extends JPanel {
                     int x = col + (col > aisleAfter ? 1 : 0);
                     Boolean taken = row.getValue().get(col);
                     if (taken == null) {
-                        add(Box.createRigidArea(new Dimension(46, 38)), cell(x, y));
+                        add(Box.createRigidArea(new Dimension(40, 38)), cell(x, y));
                     } else {
                         String code = row.getKey().toString() + col;
                         UiTheme.SeatButton button = new UiTheme.SeatButton(code, taken);
-                        button.setPreferredSize(new Dimension(46, 38));
+                        button.setPreferredSize(new Dimension(40, 38));
                         button.setToolTipText(code + (taken ? " — đã đặt hoặc đang giữ" : " — ghế trống"));
                         button.setSelected(!taken && selected.contains(code));
-                        button.addActionListener(event -> changed.run());
+                        button.getAccessibleContext().setAccessibleName("Ghế " + code + (taken ? ", đã đặt hoặc đang giữ" : ", còn trống"));
+                        button.addActionListener(event -> {
+                            if (button.isSelected() && available.stream().filter(JToggleButton::isSelected).count() > 10) {
+                                button.setSelected(false);
+                                java.awt.Toolkit.getDefaultToolkit().beep();
+                            }
+                            changed.run();
+                        });
                         add(button, cell(x, y));
                         if (!taken) {
                             available.add(button);
@@ -102,7 +117,7 @@ public final class SeatMapPanel extends JPanel {
         GridBagConstraints c = new GridBagConstraints();
         c.gridx = x;
         c.gridy = y;
-        c.insets = new Insets(4, 4, 4, 4);
+        c.insets = new Insets(4, 3, 4, 3);
         c.anchor = GridBagConstraints.CENTER;
         return c;
     }

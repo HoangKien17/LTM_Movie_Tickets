@@ -43,6 +43,7 @@ final class UiTheme {
     static final Color GREEN_PALE = new Color(24, 53, 56);
     static final Color RED = new Color(255, 135, 158);
     static final Color RED_PALE = new Color(64, 31, 48);
+    static final Color SELECTED = new Color(33, 122, 255);
     static final Color GOLD = new Color(244, 184, 80);
 
     private UiTheme() {
@@ -108,6 +109,55 @@ final class UiTheme {
         return panel;
     }
 
+    static RoundedPanel glass() {
+        RoundedPanel panel = surface();
+        panel.putClientProperty("glow", Boolean.TRUE);
+        return panel;
+    }
+
+    static javax.swing.JLabel legend(String text, Color color) {
+        javax.swing.JLabel label = new javax.swing.JLabel("●  " + text);
+        label.setForeground(color);
+        label.setFont(font(11, Font.PLAIN));
+        return label;
+    }
+
+    static javax.swing.JTextArea copy(String text, int size) {
+        javax.swing.JTextArea area = new javax.swing.JTextArea(text);
+        area.setEditable(false);
+        area.setFocusable(false);
+        area.setOpaque(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(font(size, Font.PLAIN));
+        area.setForeground(MUTED);
+        return area;
+    }
+
+    static javax.swing.Icon orbitIcon(final int size) {
+        return new javax.swing.Icon() {
+            public int getIconWidth() {
+                return size;
+            }
+
+            public int getIconHeight() {
+                return size;
+            }
+
+            public void paintIcon(java.awt.Component c, Graphics graphics, int x, int y) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.translate(x, y);
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setStroke(new BasicStroke(2f));
+                g.setPaint(new GradientPaint(0, 0, PRIMARY, size, size, PURPLE));
+                g.drawOval(size / 4, size / 5, size / 2, size / 2);
+                g.rotate(-Math.PI / 6, size / 2.0, size / 2.0);
+                g.drawOval(2, size / 3, size - 5, size / 3);
+                g.dispose();
+            }
+        };
+    }
+
     static JTextField field(int columns) {
         JTextField field = new JTextField(columns);
         styleField(field);
@@ -164,6 +214,45 @@ final class UiTheme {
         darkScrollbar(pane.getVerticalScrollBar());
         darkScrollbar(pane.getHorizontalScrollBar());
         return pane;
+    }
+
+    /**
+     * Keep wrapped content at the viewport width and let short windows scroll.
+     */
+    static JScrollPane scrollContent(JComponent content) {
+        FitColumn column = new FitColumn();
+        column.add(content, java.awt.BorderLayout.NORTH);
+        JScrollPane pane = scroll(column);
+        pane.setHorizontalScrollBarPolicy(javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        return pane;
+    }
+
+    private static final class FitColumn extends javax.swing.JPanel implements javax.swing.Scrollable {
+
+        FitColumn() {
+            super(new java.awt.BorderLayout());
+            setOpaque(false);
+        }
+
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        public int getScrollableUnitIncrement(java.awt.Rectangle r, int orientation, int direction) {
+            return 18;
+        }
+
+        public int getScrollableBlockIncrement(java.awt.Rectangle r, int orientation, int direction) {
+            return Math.max(36, r.height - 24);
+        }
+
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
     }
 
     private static void darkScrollbar(javax.swing.JScrollBar bar) {
@@ -333,9 +422,18 @@ final class UiTheme {
         protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setPaint(new GradientPaint(0, 0, blend(fill, WHITE, 0.025f), getWidth(), getHeight(), fill));
+            Color top = blend(fill, WHITE, 0.025f);
+            Color bottom = fill;
+            if (Boolean.TRUE.equals(getClientProperty("glow"))) {
+                top = new Color(top.getRed(), top.getGreen(), top.getBlue(), 240);
+                bottom = new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), 225);
+            }
+            g.setPaint(new GradientPaint(0, 0, top, getWidth(), getHeight(), bottom));
             g.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
-            g.setColor(LINE);
+            boolean accent = Boolean.TRUE.equals(getClientProperty("glow"))
+                    || Boolean.TRUE.equals(getClientProperty("selected"));
+            g.setPaint(accent ? new GradientPaint(0, 0, new Color(92, 226, 239, 180),
+                    getWidth(), getHeight(), new Color(166, 117, 255, 170)) : LINE);
             g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, radius, radius);
             g.dispose();
             super.paintComponent(graphics);
@@ -414,8 +512,12 @@ final class UiTheme {
                 color = LINE;
             }
             g.setPaint(fill.equals(PRIMARY) && isEnabled()
-                    ? new GradientPaint(0, 0, PURPLE, getWidth(), 0, color) : color);
+                    ? new GradientPaint(0, 0, new Color(41, 213, 241), getWidth(), getHeight(), color) : color);
             g.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
+            if (!fill.equals(PRIMARY) && isEnabled()) {
+                g.setColor(new Color(122, 146, 187, 75));
+                g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, radius, radius);
+            }
             if (hasFocus()) {
                 g.setColor(WHITE);
                 g.drawRoundRect(3, 3, getWidth() - 7, getHeight() - 7, radius, radius);
@@ -451,47 +553,34 @@ final class UiTheme {
         protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            Color fill = taken ? new Color(39, 44, 58) : (isSelected() ? PRIMARY : NAVY_LIGHT);
-            Color foreground = taken ? MUTED : (isSelected() ? NAVY : TEXT);
+            Color edge = taken ? LINE : isSelected() ? PRIMARY : PRIMARY;
+            Color fill = taken ? new Color(39, 44, 58) : isSelected() ? SELECTED : NAVY_LIGHT;
+            if (!taken && (getModel().isRollover() || isSelected())) {
+                g.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), 32));
+                g.fillRoundRect(0, 0, getWidth(), getHeight() - 1, 13, 13);
+            }
             g.setColor(fill);
-            g.fillRoundRect(3, 2, getWidth() - 6, getHeight() - 6, 9, 9);
-            g.setColor(taken ? LINE : isSelected() ? PRIMARY : PURPLE);
-            g.setStroke(new BasicStroke(hasFocus() ? 2f : 1f));
-            g.drawRoundRect(3, 2, getWidth() - 7, getHeight() - 7, 9, 9);
-            g.drawLine(8, getHeight() - 8, getWidth() - 9, getHeight() - 8);
-            g.dispose();
-            setForeground(foreground);
-            super.paintComponent(graphics);
-        }
-    }
-
-    static class PosterPanel extends javax.swing.JPanel {
-
-        private final String label;
-
-        PosterPanel(String label) {
-            this.label = label;
-            setOpaque(false);
-            setPreferredSize(new Dimension(122, 170));
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setPaint(new GradientPaint(0, 0, NAVY_LIGHT, getWidth(), getHeight(), new Color(71, 39, 112)));
-            g.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
-            g.setColor(new Color(255, 255, 255, 28));
-            g.fillOval(getWidth() - 85, -25, 115, 115);
-            g.fillOval(-60, getHeight() - 70, 130, 130);
-            g.setColor(GOLD);
+            g.fillRoundRect(5, 3, getWidth() - 10, getHeight() - 10, 8, 8);
+            g.setColor(edge);
+            g.setStroke(new BasicStroke(hasFocus() ? 2f : 1.2f));
+            g.drawRoundRect(5, 3, getWidth() - 11, getHeight() - 11, 8, 8);
+            g.fillRoundRect(1, getHeight() / 2, 4, getHeight() / 2 - 5, 3, 3);
+            g.fillRoundRect(getWidth() - 5, getHeight() / 2, 4, getHeight() / 2 - 5, 3, 3);
+            g.drawLine(7, getHeight() - 6, getWidth() - 8, getHeight() - 6);
+            g.setColor(taken ? MUTED : TEXT);
             g.setFont(font(10, Font.BOLD));
-            g.drawString("GALAXY CINEMA", 13, 26);
-            g.setColor(WHITE);
-            g.setFont(font(34, Font.BOLD));
-            String initial = label.isEmpty() ? "P" : label.substring(0, 1).toUpperCase();
-            g.drawString(initial, (getWidth() - g.getFontMetrics().stringWidth(initial)) / 2,
-                    getHeight() / 2 + 12);
+            String number = getText().substring(1);
+            int textX = (getWidth() - g.getFontMetrics().stringWidth(number)) / 2;
+            g.drawString(number, textX, getHeight() / 2 + 5);
+            if (isSelected() && !taken) {
+                g.setStroke(new BasicStroke(1.8f));
+                g.drawLine(getWidth() - 17, 9, getWidth() - 14, 12);
+                g.drawLine(getWidth() - 14, 12, getWidth() - 9, 7);
+            }
+            if (hasFocus()) {
+                g.setColor(WHITE);
+                g.drawRoundRect(3, 1, getWidth() - 7, getHeight() - 5, 9, 9);
+            }
             g.dispose();
         }
     }
