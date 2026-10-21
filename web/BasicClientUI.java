@@ -1053,8 +1053,9 @@ public final class BasicClientUI extends JFrame {
                 dialog.dispose();
                 if (profileDialog == dialog) {
                     profileDialog = null;
-            
-                }}
+
+                }
+            }
         });
     }
 
@@ -1688,12 +1689,12 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void adminDeleteProduct() {
-        String id = JOptionPane.showInputDialog(this, "Mã sản phẩm cần ngừng bán");
+        String id = AdminDialog.inputId(this, "Ngừng bán sản phẩm", "Mã sản phẩm cần ngừng bán", false);
         if (id == null || id.trim().isEmpty()) {
             return;
         }
-        if (JOptionPane.showConfirmDialog(this, "Ngừng bán sản phẩm #" + id.trim() + "?",
-                "Xác nhận", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        if (!AdminDialog.confirm(this, "Xác nhận ngừng bán",
+                "Ngừng bán sản phẩm #" + id + "?\nSản phẩm sẽ không còn xuất hiện trong danh mục đặt mới.", "Ngừng bán")) {
             return;
         }
         send("ADMIN_DELETE_PRODUCT;" + id.trim(), lines -> {
@@ -1902,12 +1903,12 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void adminCancel() {
-        String id = JOptionPane.showInputDialog(this, "Mã đơn vé cần hủy");
+        String id = AdminDialog.inputId(this, "Hủy đơn vé", "Mã đơn vé cần hủy", true);
         if (id == null || id.trim().isEmpty()) {
             return;
         }
-        if (JOptionPane.showConfirmDialog(this, "Hủy đơn vé #" + id.trim() + "?",
-                "Xác nhận", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        if (!AdminDialog.confirm(this, "Xác nhận hủy đơn vé",
+                "Hủy toàn bộ đơn vé #" + id + "?\nHãy đối chiếu mã đơn trong danh sách trước khi tiếp tục.", "Hủy đơn vé")) {
             return;
         }
         send("ADMIN_CANCEL_TICKET;" + id.trim(),
@@ -1920,13 +1921,12 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void adminDelete(String command, String label, Runnable refresh) {
-        String id = JOptionPane.showInputDialog(this, label);
+        String id = AdminDialog.inputId(this, "Xóa dữ liệu", label, false);
         if (id == null || id.trim().isEmpty()) {
             return;
         }
-        if (JOptionPane.showConfirmDialog(this, "Xóa " + label.toLowerCase(Locale.ROOT)
-                + " #" + id.trim() + "?", "Xác nhận", JOptionPane.YES_NO_OPTION)
-                != JOptionPane.YES_OPTION) {
+        if (!AdminDialog.confirm(this, "Xác nhận xóa dữ liệu",
+                "Xóa mục có " + label.toLowerCase(Locale.ROOT) + " #" + id + "?\nThao tác này không có nút hoàn tác.", "Xác nhận xóa")) {
             return;
         }
         send(command + ";" + id.trim(), lines -> {
@@ -1941,49 +1941,55 @@ public final class BasicClientUI extends JFrame {
     }
 
     private String[] prompt(String title, String... labels) {
-        JPanel form = new JPanel(new GridLayout(0, 2, 10, 10));
-        form.setBorder(new EmptyBorder(14, 10, 14, 10));
+        AdminDialog dialog = new AdminDialog(this, title,
+                title.startsWith("Sửa") ? "Cập nhật thông tin. Những trường ghi giữ nguyên có thể để trống."
+                : "Nhập thông tin bên dưới để thêm vào danh sách quản lý.", "Lưu thông tin", false);
         JTextField[] fields = new JTextField[labels.length];
         for (int i = 0; i < labels.length; i++) {
-            fields[i] = UiTheme.field(24);
-            form.add(label(labels[i], 13, Font.PLAIN, UiTheme.TEXT));
-            form.add(fields[i]);
+            fields[i] = AdminDialog.field();
+            dialog.addField(labels[i], fields[i]);
         }
-        if (JOptionPane.showConfirmDialog(this, form, title,
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+        if (!dialog.open(() -> AdminDialog.validate(title, formValues(fields)))) {
             return null;
         }
-        String[] values = new String[labels.length];
-        for (int i = 0; i < labels.length; i++) {
+        return formValues(fields);
+    }
+
+    private static String[] formValues(JTextField[] fields) {
+        String[] values = new String[fields.length];
+        for (int i = 0; i < fields.length; i++) {
             values[i] = fields[i].getText().trim();
         }
         return values;
     }
 
     private String[] promptProduct(boolean updating) {
-        JPanel form = new JPanel(new GridLayout(0, 2, 10, 10));
-        form.setBorder(new EmptyBorder(14, 10, 14, 10));
-        JTextField id = UiTheme.field(24), name = UiTheme.field(24), price = UiTheme.field(24);
+        AdminDialog dialog = new AdminDialog(this, updating ? "Sửa sản phẩm" : "Thêm sản phẩm",
+                "Quản lý đồ ăn, nước uống và trạng thái bán tại rạp.", "Lưu sản phẩm", false);
+        JTextField id = AdminDialog.field(), name = AdminDialog.field(), price = AdminDialog.field();
         JComboBox<String> type = new JComboBox<>(new String[]{"Đồ ăn", "Nước uống"});
         JComboBox<String> active = new JComboBox<>(new String[]{"Đang bán", "Ngừng bán"});
         UiTheme.styleCombo(type);
         UiTheme.styleCombo(active);
         if (updating) {
-            form.add(label("Mã sản phẩm", 13, Font.PLAIN, UiTheme.TEXT));
-            form.add(id);
+            dialog.addField("Mã sản phẩm", id);
         }
-        form.add(label("Tên sản phẩm", 13, Font.PLAIN, UiTheme.TEXT));
-        form.add(name);
-        form.add(label("Loại", 13, Font.PLAIN, UiTheme.TEXT));
-        form.add(type);
-        form.add(label("Giá bán", 13, Font.PLAIN, UiTheme.TEXT));
-        form.add(price);
+        dialog.addField("Tên sản phẩm", name);
+        dialog.addField("Loại", type);
+        dialog.addField("Giá bán (đ)", price);
         if (updating) {
-            form.add(label("Trạng thái", 13, Font.PLAIN, UiTheme.TEXT));
-            form.add(active);
+            dialog.addField("Trạng thái", active);
         }
-        if (JOptionPane.showConfirmDialog(this, form, updating ? "Sửa sản phẩm" : "Thêm sản phẩm",
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+        if (!dialog.open(() -> {
+            if (updating && !AdminDialog.validId(id.getText().trim(), false)) {
+                return "Mã sản phẩm phải là số nguyên dương.";
+            }
+            String value = name.getText().trim();
+            if (value.isEmpty() || value.length() > 120) {
+                return "Tên sản phẩm cần có từ 1 đến 120 ký tự.";
+            }
+            return AdminDialog.priceError(price.getText().trim(), true);
+        })) {
             return null;
         }
         String kind = type.getSelectedIndex() == 0 ? "food" : "drink";
@@ -1995,13 +2001,12 @@ public final class BasicClientUI extends JFrame {
     }
 
     private MovieForm promptMovie(String title, String... labels) {
-        JPanel form = new JPanel(new GridLayout(0, 2, 10, 10));
-        form.setBorder(new EmptyBorder(14, 10, 14, 10));
+        AdminDialog dialog = new AdminDialog(this, title,
+                "Thông tin phim và poster sẽ được hiển thị trên trang chủ.", "Lưu phim", false);
         JTextField[] fields = new JTextField[labels.length];
         for (int i = 0; i < labels.length; i++) {
-            fields[i] = UiTheme.field(24);
-            form.add(label(labels[i], 13, Font.PLAIN, UiTheme.TEXT));
-            form.add(fields[i]);
+            fields[i] = AdminDialog.field();
+            dialog.addField(labels[i], fields[i]);
         }
         File[] selected = new File[1];
         JLabel filename = label("Sửa phim".equals(title) ? "Giữ poster hiện tại" : "Chưa chọn ảnh",
@@ -2011,7 +2016,7 @@ public final class BasicClientUI extends JFrame {
             chooser.setDialogTitle("Chọn poster cho phim");
             chooser.setFileFilter(new FileNameExtensionFilter("Ảnh JPG hoặc PNG", "jpg", "jpeg", "png"));
             chooser.setAcceptAllFileFilterUsed(false);
-            if (chooser.showOpenDialog(form) == JFileChooser.APPROVE_OPTION) {
+            if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
                 selected[0] = chooser.getSelectedFile();
                 filename.setText(selected[0].getName());
                 filename.setToolTipText(selected[0].getAbsolutePath());
@@ -2021,17 +2026,32 @@ public final class BasicClientUI extends JFrame {
         picker.setOpaque(false);
         picker.add(choose, BorderLayout.WEST);
         picker.add(filename, BorderLayout.CENTER);
-        form.add(label("Poster JPG/PNG (tối đa 2 MB)", 13, Font.PLAIN, UiTheme.TEXT));
-        form.add(picker);
-        if (JOptionPane.showConfirmDialog(this, form, title,
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+        dialog.addField("Poster JPG/PNG (tối đa 2 MB)", picker);
+        if (!dialog.open(() -> {
+            String[] values = formValues(fields);
+            String error = AdminDialog.validate(title, values);
+            if (error != null) {
+                return error;
+            }
+            if ("Sửa phim".equals(title) && selected[0] == null
+                    && java.util.Arrays.stream(values).skip(1).allMatch(String::isEmpty)) {
+                return "Hãy nhập thông tin mới hoặc chọn poster mới.";
+            }
+            if (selected[0] != null) {
+                try {
+                    if (!selected[0].isFile() || Files.size(selected[0].toPath()) > 2L * 1024 * 1024
+                            || ImageIO.read(selected[0]) == null) {
+                        return "Chọn ảnh JPG/PNG hợp lệ, không quá 2 MB.";
+                    }
+                } catch (IOException ex) {
+                    return "Không đọc được ảnh poster. Hãy chọn lại ảnh.";
+                }
+            }
+            return null;
+        })) {
             return null;
         }
-        String[] values = new String[labels.length];
-        for (int i = 0; i < labels.length; i++) {
-            values[i] = fields[i].getText().trim();
-        }
-        return new MovieForm(values, selected[0]);
+        return new MovieForm(formValues(fields), selected[0]);
     }
 
     private String posterPayload(File file) {
