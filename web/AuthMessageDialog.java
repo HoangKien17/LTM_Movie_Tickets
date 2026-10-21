@@ -38,7 +38,10 @@ final class AuthMessageDialog extends JDialog {
         top.add(brand, BorderLayout.WEST); top.add(close, BorderLayout.EAST);
         panel.add(top, BorderLayout.NORTH);
         JPanel content = new JPanel(new BorderLayout(0, 13)); content.setOpaque(false);
-        JLabel heading = new JLabel((error ? "!  " : "✓  ") + title);
+        JLabel heading = new JLabel(title, statusIcon(error, accent), SwingConstants.LEFT);
+        heading.setName("auth-message-heading");
+        heading.setIconTextGap(12);
+        heading.getAccessibleContext().setAccessibleDescription(error ? "Thông báo lỗi" : "Thông báo thành công");
         heading.setForeground(accent); heading.setFont(AuthStyle.font(24, true));
         content.add(heading, BorderLayout.NORTH);
         JTextArea body = new JTextArea(message);
@@ -72,6 +75,33 @@ final class AuthMessageDialog extends JDialog {
         };
         top.addMouseListener(drag); top.addMouseMotionListener(drag);
     }
+    /** Draw status as geometry so it never depends on a font's symbol glyphs. */
+    private static Icon statusIcon(boolean error, Color accent) {
+        return new Icon() {
+            public int getIconWidth() { return 30; }
+            public int getIconHeight() { return 30; }
+            public void paintIcon(Component c, Graphics graphics, int x, int y) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                AuthStyle.quality(g);
+                g.translate(x, y);
+                g.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 28));
+                g.fillOval(1, 1, 28, 28);
+                g.setColor(accent);
+                g.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.drawOval(1, 1, 28, 28);
+                g.setStroke(new BasicStroke(2.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                if (error) {
+                    g.drawLine(15, 8, 15, 17);
+                    g.fillOval(14, 21, 3, 3);
+                } else {
+                    g.drawLine(8, 15, 13, 20);
+                    g.drawLine(13, 20, 22, 10);
+                }
+                g.dispose();
+            }
+        };
+    }
+
     static void show(Window owner, String title, String message, boolean error) {
         AuthMessageDialog dialog = new AuthMessageDialog(owner, title, message, error);
         try { dialog.setVisible(true); } finally { dialog.dispose(); }
