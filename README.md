@@ -192,7 +192,7 @@ java -cp 'out;lib/*' web.BasicClientUI
 
 ## Ảnh giao diện và poster phim
 
-- `assets/galaxy-cinema-auth.png` là hình cuộn phim tĩnh trên màn hình đăng nhập/đăng ký. Tên file phải khớp chính xác; Client đọc ảnh theo đường dẫn tương đối từ thư mục chạy chương trình.
+- `assets/galaxy-cyber-hero-v1.png` là cảnh nền đăng nhập và ảnh dự phòng khi phim chưa có poster. `AuthBackdrop` dùng thêm các ảnh mẫu `img/conan.jpeg`, `img/doraemon.jpeg`, `img/dragonball.jpeg`; thiếu ảnh vẫn có nền dự phòng. Chạy Client từ thư mục gốc dự án. Banner và thẻ phim dùng poster thật do Server gửi qua TCP.
 - `img/` là nơi Server lưu poster do admin tải lên. Admin chọn ảnh JPG/PNG tối đa **2 MB**; Server tạo ảnh JPEG kích thước **244 × 340**, lưu tên file trong MySQL rồi gửi nội dung ảnh cho Client qua TCP.
 - Nếu đặt biến môi trường `MOVIE_POSTER_DIR` cho Server, poster mới sẽ được lưu ở thư mục đó thay cho `img/`. Ảnh từ đường dẫn cũ trong thư mục người dùng vẫn được hỗ trợ đọc.
 - Ảnh vừa tải lên `img/` nằm trên **máy chạy Server**. Muốn đưa ảnh đó lên GitHub để chia sẻ cho nhóm, cần `git add`, commit và push; lưu vào thư mục không tự đồng bộ lên GitHub.
@@ -244,7 +244,7 @@ out/          File .class sinh ra khi biên dịch, không đưa lên Git
 - **Server báo MySQL chưa sẵn sàng**: kiểm tra dịch vụ MySQL, URL/cổng database và việc đã chạy `database/schema.sql`.
 - **`Address already in use` hoặc không mở được cổng 2040**: dừng phiên Server cũ bằng `Ctrl+C` trước khi chạy lại.
 - **Client không kết nối được Server**: chạy Server trước; kiểm tra `MOVIE_SERVER_HOST`, `MOVIE_SERVER_PORT` và tường lửa nếu kết nối qua LAN.
-- **Không thấy hình cuộn phim khi đăng nhập**: kiểm tra đúng file `assets/galaxy-cinema-auth.png`, chạy Client từ thư mục gốc và mở lại Client.
+- **Không thấy ảnh nền khi đăng nhập**: kiểm tra `assets/galaxy-cyber-hero-v1.png`, chạy Client từ thư mục gốc và mở lại Client. Ảnh cuộn phim vàng cũ không còn được giao diện mới sử dụng.
 - **`ClassNotFoundException` hoặc vẫn thấy giao diện cũ**: biên dịch lại toàn bộ mã vào `out/`, đóng Client cũ rồi chạy lại bằng lệnh ở trên.
 
 
@@ -277,3 +277,22 @@ MOVIE_SERVER_HOST, MOVIE_SERVER_PORT đúng môi trường đó. Xem HUONG_DAN_V
 Server đọc MOVIE_SERVER_PORT, mặc định 2040. Cổng của client phải khớp.
 Nhật ký giám sát giữ tối đa 500 dòng trong RAM, xóa khi khởi động lại server;
 trạng thái soát vé lưu bền vững trong MySQL.
+## Giao diện neon cập nhật
+
+- Đăng nhập/đăng ký có tab chuyển màn hình, nền điện ảnh và panel kính tối. Ghi nhớ chỉ lưu email/số điện thoại, không lưu mật khẩu hay tự đăng nhập.
+- Trang chủ có bảng chọn ngày, phòng và giờ chiếu bên phải. Lựa chọn đi theo mã suất chiếu thật từ Server.
+- Ghế có viền cyan, ghế đang chọn màu xanh có dấu kiểm; bảng đơn, bắp nước và tổng tiền đặt bên phải. Tối đa 10 ghế mỗi đơn.
+- Thanh toán QR có thời gian giữ ghế; vé điện tử có đường xé, mã QR đọc được, tải toàn bộ vé PNG và in vé. QR vé chỉ chứa token xác thực.
+- Nút Soát vé, Quản trị và Giám sát server xuất hiện theo quyền của tài khoản.
+- Chưa có dữ liệu ghế VIP/điểm đánh giá. Thanh toán thẻ và ví trực tiếp chưa hỗ trợ; giao diện giữ các tùy chọn này ở trạng thái vô hiệu hóa.
+
+Kiểm thử giao diện không cần MySQL (biên dịch trước):
+
+```powershell
+java -cp 'out;lib/*' tests.FeatureUnitTest
+java -cp 'out;lib/*' web.UiRedesignTest
+java -cp 'out;lib/*' tests.RealtimeUiTest
+java -cp 'out;lib/*' web.NeonUiTest
+```
+
+Hai kiểm thử cuối mở TCP giả lập trên localhost. `web.NeonUiTest` xuất ảnh trong `../neon-ui-qa/` bằng dữ liệu kiểm thử, không đặt vé hay thanh toán thật.

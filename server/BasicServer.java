@@ -47,7 +47,16 @@ public final class BasicServer {
     private final BasicService basic = new BasicService();
     private final CinemaService cinema = new CinemaService();
     private final PaymentService payments = new PaymentService();
+    private final service.PasswordResetService passwordResets;
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
+
+    public BasicServer() {
+        this(new service.PasswordResetService());
+    }
+
+    public BasicServer(service.PasswordResetService passwordResets) {
+        this.passwordResets = java.util.Objects.requireNonNull(passwordResets);
+    }
 
     public static void main(String[] args) {
         try {
@@ -86,6 +95,7 @@ public final class BasicServer {
                 pool.execute(() -> handleClient(socket));
             }
         } finally {
+            passwordResets.close();
             paymentPoller.shutdownNow();
             pool.shutdown();
         }
@@ -95,8 +105,9 @@ public final class BasicServer {
         try {
             for (int showId : payments.synchronizePending()) {
                 seatsChanged(showId);
-        
-            }} catch (SQLException ex) {
+
+            }
+        } catch (SQLException ex) {
             System.err.println("Không đồng bộ được thanh toán: " + ex.getMessage());
         }
     }
@@ -141,6 +152,25 @@ public final class BasicServer {
         String command = p[0].trim().toUpperCase(Locale.ROOT);
         try {
             switch (command) {
+                case "REQUEST_PASSWORD_RESET":
+                    count(p, 2);
+                    passwordResets.request(dec(p[1]), session.socket.getInetAddress().getHostAddress());
+                    return one("OK;PASSWORD_RESET_REQUESTED");
+                case "RESET_PASSWORD":
+                    count(p, 4);
+                    int resetUserId = passwordResets.reset(dec(p[1]), dec(p[2]), dec(p[3]),
+                            session.socket.getInetAddress().getHostAddress());
+                    for (Session active : sessions) {
+                        NguoiDung loggedIn = active.user;
+                        if (loggedIn != null && loggedIn.getId() == resetUserId) {
+                            active.user = null;
+                            active.watchedShowId = 0;
+                            if (active != session) {
+                                active.close();
+                            }
+                        }
+                    }
+                    return one("OK;PASSWORD_RESET");
                 case "REGISTER":
                     count(p, 5);
                     NguoiDung created = basic.register(dec(p[1]), dec(p[2]), dec(p[3]), dec(p[4]));
@@ -483,7 +513,7 @@ public final class BasicServer {
 
     private final class Session implements AutoCloseable {
 
-        private NguoiDung user;
+        private volatile NguoiDung user;
         private final long monitorId;
         private volatile int watchedShowId;
         private final Socket socket;

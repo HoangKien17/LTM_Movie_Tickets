@@ -13,6 +13,30 @@ import mysql.CSDL;
  */
 public final class NguoiDungRepository {
 
+    public NguoiDung findByEmail(String email) throws SQLException {
+        String sql = "SELECT id,ho_ten,gmail,so_dien_thoai,mat_khau,vai_tro FROM nguoi_dung WHERE gmail=? LIMIT 1";
+        try (Connection conn = CSDL.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? read(rs) : null;
+            }
+        }
+    }
+
+    /**
+     * Refuse an old reset code if email/password changed after it was issued.
+     */
+    public boolean replacePassword(NguoiDung expected, String replacementHash) throws SQLException {
+        String sql = "UPDATE nguoi_dung SET mat_khau=? WHERE id=? AND gmail=? AND BINARY mat_khau=BINARY ?";
+        try (Connection conn = CSDL.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, replacementHash);
+            ps.setInt(2, expected.getId());
+            ps.setString(3, expected.getGmail());
+            ps.setString(4, expected.getMatKhauHash());
+            return ps.executeUpdate() == 1;
+        }
+    }
+
     public NguoiDung findByLogin(String login) throws SQLException {
         // Database dùng collation *_ci cho dữ liệu tiếng Việt, nên phải ép so sánh
         // nhị phân riêng tại bước đăng nhập để email phân biệt chữ hoa/chữ thường.

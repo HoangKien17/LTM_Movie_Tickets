@@ -13,7 +13,7 @@ import protocol.Protocol;
 public final class ServerMonitor {
 
     private static final Set<String> COMMANDS = new HashSet<>(Arrays.asList(
-            "REGISTER", "LOGIN", "LOGOUT", "GET_MOVIES", "GET_SHOWS", "WATCH_SHOW", "GET_SEAT_MAP",
+            "REGISTER", "LOGIN", "LOGOUT", "REQUEST_PASSWORD_RESET", "RESET_PASSWORD", "GET_MOVIES", "GET_SHOWS", "WATCH_SHOW", "GET_SEAT_MAP",
             "BOOK_TICKET", "GET_BOOKINGS", "GET_TICKET", "GET_E_TICKET", "INSPECT_TICKET", "CHECK_IN",
             "GET_PRODUCTS", "CREATE_ORDER", "GET_PAYMENT", "DEMO_CONFIRM_PAYMENT", "GET_PROFILE", "UPDATE_PROFILE",
             "CANCEL_TICKET", "ADMIN_MONITOR", "ADMIN_GET_ROOMS", "ADMIN_GET_SHOWS", "ADMIN_GET_USERS",
@@ -67,7 +67,7 @@ public final class ServerMonitor {
         if (failed || command.equals("BOOK_TICKET") || command.equals("CREATE_ORDER")
                 || command.equals("DEMO_CONFIRM_PAYMENT") || command.contains("CANCEL")
                 || command.equals("CHECK_IN") || command.equals("LOGIN") || command.equals("LOGOUT")
-                || command.equals("UPDATE_PROFILE")
+                || command.equals("UPDATE_PROFILE") || command.contains("PASSWORD_RESET") || command.equals("RESET_PASSWORD")
                 || (command.startsWith("ADMIN_") && command.contains("PRODUCT"))) {
             String detail = failed ? "Từ chối / lỗi" : "Thành công";
             if (!failed && command.equals("BOOK_TICKET")) {

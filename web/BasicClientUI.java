@@ -63,7 +63,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.UIManager;
 import javax.swing.WindowConstants;
-import javax.swing.border.AbstractBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -84,6 +83,7 @@ public final class BasicClientUI extends JFrame {
     private final CardLayout pageLayout = new CardLayout();
     private final JPanel pages = new JPanel(pageLayout);
     private final Map<String, NavButton> navigation = new LinkedHashMap<>();
+    private final JPanel footer = new JPanel(new BorderLayout());
     private final JLabel status = new JLabel("Sẵn sàng");
     private final JLabel pageTitle = label("", 23, Font.BOLD, UiTheme.TEXT);
     private final JLabel pageSubtitle = label("", 13, Font.PLAIN, UiTheme.MUTED);
@@ -105,6 +105,12 @@ public final class BasicClientUI extends JFrame {
     private final JTextField registerEmail = UiTheme.field(24);
     private final JTextField registerPhone = UiTheme.field(24);
     private final JPasswordField registerPassword = UiTheme.password(24);
+    private final JTextField recoveryEmail = UiTheme.field(24);
+    private final JTextField recoveryCode = UiTheme.field(8);
+    private final JPasswordField recoveryPassword = UiTheme.password(24);
+    private final JPasswordField recoveryConfirm = UiTheme.password(24);
+    private String pendingRecoveryEmail = "";
+    private AuthScreen resetCodeScreen;
 
     private final JPanel movieGrid = new MovieGrid();
     private final List<MovieItem> movies = new ArrayList<>();
@@ -155,6 +161,7 @@ public final class BasicClientUI extends JFrame {
 
     public BasicClientUI() {
         super("Galaxy Cinema");
+        setUndecorated(true);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setSize(1440, 900);
         setMinimumSize(new Dimension(1100, 760));
@@ -162,9 +169,16 @@ public final class BasicClientUI extends JFrame {
         getContentPane().setBackground(UiTheme.BACKGROUND);
         screens.add(buildAuth(false), "LOGIN");
         screens.add(buildAuth(true), "REGISTER");
+        screens.add(new AuthScreen(AuthScreen.Mode.RESET_EMAIL, new JTextField[]{recoveryEmail}, new JCheckBox(),
+                this::returnFromRecovery, this::showRecoveryEmail, this::requestRecoveryCode, () -> {
+                }), "RESET_EMAIL");
+        resetCodeScreen = new AuthScreen(AuthScreen.Mode.RESET_PASSWORD,
+                new JTextField[]{recoveryCode, recoveryPassword, recoveryConfirm}, new JCheckBox(),
+                this::returnFromRecovery, this::showRecoveryEmail, this::confirmRecovery, this::resendRecoveryCode);
+        screens.add(resetCodeScreen, "RESET_PASSWORD");
         screens.add(buildMain(), "MAIN");
         add(screens, BorderLayout.CENTER);
-        JPanel footer = new JPanel(new BorderLayout());
+        add(new AppWindowChrome(this), BorderLayout.NORTH);
         footer.setBackground(UiTheme.NAVY);
         footer.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(1, 0, 0, 0, UiTheme.LINE),
@@ -173,15 +187,14 @@ public final class BasicClientUI extends JFrame {
         status.setForeground(UiTheme.MUTED);
         footer.add(status, BorderLayout.CENTER);
         add(footer, BorderLayout.SOUTH);
-        screenLayout.show(screens, "LOGIN");
-        try {
-            String saved = java.util.prefs.Preferences.userNodeForPackage(BasicClientUI.class).get("loginName", "");
-            loginName.setText(saved);
-            rememberLogin.setSelected(!saved.isEmpty());
-        } catch (SecurityException ignored) { }
+        showAuth("LOGIN");
         loginPassword.addActionListener(event -> login());
         loginName.addActionListener(event -> login());
         registerPassword.addActionListener(event -> register());
+        recoveryEmail.addActionListener(event -> requestRecoveryCode());
+        recoveryCode.addActionListener(event -> confirmRecovery());
+        recoveryPassword.addActionListener(event -> recoveryConfirm.requestFocusInWindow());
+        recoveryConfirm.addActionListener(event -> confirmRecovery());
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent event) {
@@ -191,193 +204,118 @@ public final class BasicClientUI extends JFrame {
     }
 
     private JPanel buildAuth(boolean registering) {
-        JPanel form = authForm();
-        if (registering) {
-            form.add(authField("Họ và tên", registerName));
-            form.add(authField("Email", registerEmail));
-            form.add(authField("Số điện thoại", registerPhone));
-            form.add(authField("Mật khẩu (ít nhất 6 ký tự)", passwordBox(registerPassword)));
-            return authScreen("Tạo tài khoản", "Bắt đầu hành trình điện ảnh của bạn.",
-                    form, "Đăng ký", this::register, "Đã có tài khoản? Đăng nhập",
-                    () -> screenLayout.show(screens, "LOGIN"), 620);
+        JTextField[] fields = registering
+                ? new JTextField[]{registerName, registerEmail, registerPhone, registerPassword}
+                : new JTextField[]{loginName, loginPassword};
+        return new AuthScreen(registering, fields, rememberLogin,
+                () -> showAuth("LOGIN"), () -> showAuth("REGISTER"),
+                registering ? this::register : this::login,
+                this::openRecovery);
+    }
+
+    private void clearRecoverySecrets() {
+        recoveryCode.setText("");
+        recoveryPassword.setText("");
+        recoveryConfirm.setText("");
+    }
+
+    private void openRecovery() {
+        String email = loginName.getText().trim();
+        recoveryEmail.setText(utils.PasswordUtil.isValidEmail(email) ? email : "");
+        showRecoveryEmail();
+    }
+
+    private void showRecoveryEmail() {
+        clearRecoverySecrets();
+        showAuth("RESET_EMAIL");
+        recoveryEmail.requestFocusInWindow();
+    }
+
+    private void returnFromRecovery() {
+        clearRecoverySecrets();
+        pendingRecoveryEmail = "";
+        showAuth("LOGIN");
+    }
+
+    private void requestRecoveryCode() {
+        String email = recoveryEmail.getText().trim();
+        if (email.length() > 100 || !utils.PasswordUtil.isValidEmail(email)) {
+            showError("Hãy nhập địa chỉ email hợp lệ đã đăng ký.");
+            return;
         }
-        form.add(authField("Email hoặc số điện thoại", loginName));
-        form.add(authField("Mật khẩu", passwordBox(loginPassword)));
-        return authScreen("Chào mừng trở lại", "Đặt vé nhanh, dễ dàng.",
-                form, "Đăng nhập", this::login, "Chưa có tài khoản? Đăng ký ngay",
-                () -> screenLayout.show(screens, "REGISTER"), 490);
-    }
-
-    private JPanel authScreen(String heading, String subtitle, JPanel form,
-            String actionText, Runnable action, String switchText,
-            Runnable switchAction, int cardHeight) {
-        JPanel screen = new AuthBackdrop();
-        screen.setLayout(new GridLayout(1, 2, 24, 0));
-        screen.setBorder(new EmptyBorder(28, 44, 28, 44));
-        JPanel left = new JPanel(new BorderLayout());
-        left.setOpaque(false);
-        JLabel brand = new JLabel("GALAXY CINEMA", UiTheme.orbitIcon(44), SwingConstants.LEFT);
-        brand.setIconTextGap(14);
-        brand.setFont(UiTheme.font(24, Font.BOLD));
-        left.add(brand, BorderLayout.NORTH);
-        JPanel words = new JPanel();
-        words.setOpaque(false);
-        words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
-        words.add(authLabel("Mỗi suất chiếu,", 38, Font.BOLD, UiTheme.TEXT));
-        words.add(authLabel("một trải nghiệm", 38, Font.BOLD, UiTheme.TEXT));
-        words.add(authLabel("mới.", 44, Font.BOLD, UiTheme.PRIMARY));
-        words.add(Box.createVerticalStrut(20));
-        JTextArea copy = UiTheme.copy("Chọn phim yêu thích. Giữ chỗ hoàn hảo.", 15);
-        copy.setMaximumSize(new Dimension(440, 70));
-        words.add(copy);
-        for (Component child : words.getComponents())
-            if (child instanceof JComponent) ((JComponent) child).setAlignmentX(Component.LEFT_ALIGNMENT);
-        JPanel wordsPosition = new JPanel(new BorderLayout());
-        wordsPosition.setOpaque(false);
-        wordsPosition.setBorder(new EmptyBorder(78, 0, 0, 0));
-        wordsPosition.add(words, BorderLayout.NORTH);
-        left.add(wordsPosition, BorderLayout.CENTER);
-        left.add(authLabel("ĐẶT VÉ  •  CHỌN GHẾ  •  TẬN HƯỞNG", 11, Font.BOLD, UiTheme.MUTED), BorderLayout.SOUTH);
-        screen.add(left);
-
-        JPanel right = new JPanel(new GridBagLayout());
-        right.setOpaque(false);
-        JPanel card = UiTheme.glass();
-        card.setLayout(new BorderLayout());
-        card.setBorder(new EmptyBorder(30, 28, 26, 28));
-        card.setPreferredSize(new Dimension(440, cardHeight));
-        JPanel content = new JPanel(new GridBagLayout());
-        content.setOpaque(false);
-        boolean registering = "Đăng ký".equals(actionText);
-        JPanel tabs = new JPanel(new GridLayout(1, 2, 8, 0));
-        tabs.setOpaque(false);
-        JButton loginTab = registering ? UiTheme.subtle("Đăng nhập") : UiTheme.secondary("Đăng nhập");
-        JButton registerTab = registering ? UiTheme.secondary("Đăng ký") : UiTheme.subtle("Đăng ký");
-        loginTab.addActionListener(e -> screenLayout.show(screens, "LOGIN"));
-        registerTab.addActionListener(e -> screenLayout.show(screens, "REGISTER"));
-        tabs.add(loginTab);
-        tabs.add(registerTab);
-        int row = 0;
-        addAuthRow(content, tabs, row++, 24);
-        addAuthRow(content, authLabel(heading, 25, Font.BOLD, UiTheme.TEXT), row++, 8);
-        addAuthRow(content, UiTheme.copy(subtitle, 12), row++, 22);
-        addAuthRow(content, form, row++, 18);
-        if (!registering) {
-            JPanel options = new JPanel(new BorderLayout(4, 0));
-            options.setOpaque(false);
-            rememberLogin.setOpaque(false);
-            rememberLogin.setForeground(UiTheme.MUTED);
-            rememberLogin.setFont(UiTheme.font(12, Font.PLAIN));
-            options.add(rememberLogin, BorderLayout.WEST);
-            JButton help = new JButton("Quên mật khẩu?");
-            help.setFont(UiTheme.font(12, Font.PLAIN));
-            help.setForeground(UiTheme.PURPLE);
-            help.setBorder(new EmptyBorder(4, 0, 4, 0));
-            help.setContentAreaFilled(false);
-            help.addActionListener(e -> JOptionPane.showMessageDialog(this,
-                    "Vui lòng liên hệ quản trị viên để được hỗ trợ khôi phục tài khoản.",
-                    "Khôi phục tài khoản", JOptionPane.INFORMATION_MESSAGE));
-            options.add(help, BorderLayout.EAST);
-            addAuthRow(content, options, row++, 18);
-        }
-        JButton submit = UiTheme.primary(actionText + "   →");
-        submit.setPreferredSize(new Dimension(320, 48));
-        submit.addActionListener(e -> action.run());
-        addAuthRow(content, submit, row++, 14);
-        JButton switchPage = UiTheme.subtle(switchText);
-        switchPage.setFont(UiTheme.font(12, Font.PLAIN));
-        switchPage.addActionListener(e -> switchAction.run());
-        addAuthRow(content, switchPage, row, 0);
-        card.add(content, BorderLayout.CENTER);
-        right.add(card);
-        screen.add(right);
-        return screen;
-    }
-
-    private static void addAuthRow(JPanel content, JComponent child, int row, int gapBelow) {
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = row;
-        gbc.weightx = 1;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.insets = new Insets(0, 0, gapBelow, 0);
-        content.add(child, gbc);
-    }
-
-    private static JPanel authForm() {
-        JPanel form = new JPanel(new GridLayout(0, 1, 0, 13));
-        form.setOpaque(false);
-        return form;
-    }
-
-    private static JPanel authField(String caption, JComponent input) {
-        JPanel field = new JPanel(new BorderLayout(0, 6));
-        field.setOpaque(false);
-        field.add(authLabel(caption, 12, Font.BOLD, UiTheme.TEXT), BorderLayout.NORTH);
-        if (input instanceof JTextField) {
-            styleAuthInput((JTextField) input);
-        }
-        input.setPreferredSize(new Dimension(320, 43));
-        field.add(input, BorderLayout.CENTER);
-        return field;
-    }
-
-    private static JLabel authLabel(String value, int size, int weight, Color color) {
-        JLabel label = new JLabel(value);
-        label.setFont(UiTheme.font(size, weight));
-        label.setForeground(color);
-        return label;
-    }
-
-    private static void styleAuthInput(JTextField input) {
-        input.setFont(UiTheme.font(14, Font.PLAIN));
-        input.setForeground(UiTheme.TEXT);
-        input.setBackground(UiTheme.BACKGROUND);
-        input.setCaretColor(UiTheme.PRIMARY);
-        input.setBorder(new RoundedInputBorder());
-    }
-
-    private static JPanel passwordBox(JPasswordField password) {
-        JPanel box = new JPanel(new BorderLayout());
-        box.setOpaque(false);
-        box.setBorder(new RoundedInputBorder());
-        password.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        password.setForeground(UiTheme.TEXT);
-        password.setOpaque(false);
-        password.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 2));
-        char hidden = password.getEchoChar();
-        JButton toggle = new JButton("Hiện");
-        toggle.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        toggle.setForeground(UiTheme.PRIMARY);
-        toggle.setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 10));
-        toggle.setContentAreaFilled(false);
-        toggle.addActionListener(event -> {
-            boolean visible = password.getEchoChar() != 0;
-            password.setEchoChar(visible ? (char) 0 : hidden);
-            toggle.setText(visible ? "Ẩn" : "Hiện");
+        send("REQUEST_PASSWORD_RESET;" + enc(email), lines -> {
+            if (!isOk(lines, "PASSWORD_RESET_REQUESTED")) {
+                return;
+            }
+            pendingRecoveryEmail = email;
+            clearRecoverySecrets();
+            resetCodeScreen.setRecoveryEmail(email);
+            resetCodeScreen.startResendCooldown();
+            showAuth("RESET_PASSWORD");
+            recoveryCode.requestFocusInWindow();
         });
-        box.add(password, BorderLayout.CENTER);
-        box.add(toggle, BorderLayout.EAST);
-        return box;
     }
 
-    private static final class RoundedInputBorder extends AbstractBorder {
-
-        @Override
-        public Insets getBorderInsets(Component c) {
-            return new Insets(10, 13, 10, 13);
+    private void resendRecoveryCode() {
+        if (pendingRecoveryEmail.isEmpty()) {
+            showRecoveryEmail();
+            return;
         }
+        send("REQUEST_PASSWORD_RESET;" + enc(pendingRecoveryEmail), lines -> {
+            if (!isOk(lines, "PASSWORD_RESET_REQUESTED")) {
+                return;
+            }
+            recoveryCode.setText("");
+            resetCodeScreen.startResendCooldown();
+            info(service.PasswordResetService.REQUEST_MESSAGE);
+        });
+    }
 
-        @Override
-        public void paintBorder(Component c, Graphics graphics,
-                int x, int y, int width, int height) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(c.hasFocus() ? UiTheme.PRIMARY : UiTheme.LINE);
-            g.draw(new RoundRectangle2D.Float(x + 0.5f, y + 0.5f,
-                    width - 1.5f, height - 1.5f, 10, 10));
-            g.dispose();
+    private void confirmRecovery() {
+        if (pendingRecoveryEmail.isEmpty()) {
+            showRecoveryEmail();
+            return;
+        }
+        String code = recoveryCode.getText().trim();
+        String password = new String(recoveryPassword.getPassword());
+        String confirmation = new String(recoveryConfirm.getPassword());
+        if (!code.matches("[0-9]{6}")) {
+            showError("Mã xác nhận phải gồm 6 chữ số.");
+            return;
+        }
+        if (password.length() < 6 || password.length() > 128) {
+            showError("Mật khẩu mới phải có từ 6 đến 128 ký tự.");
+            return;
+        }
+        if (!password.equals(confirmation)) {
+            showError("Mật khẩu nhập lại không khớp.");
+            return;
+        }
+        final String email = pendingRecoveryEmail;
+        send("RESET_PASSWORD;" + enc(email) + ";" + enc(code) + ";" + enc(password), lines -> {
+            if (!isOk(lines, "PASSWORD_RESET")) {
+                return;
+            }
+            clearRecoverySecrets();
+            pendingRecoveryEmail = "";
+            loginName.setText(email);
+            loginPassword.setText("");
+            showAuth("LOGIN");
+            info("Đặt lại mật khẩu thành công. Hãy đăng nhập bằng mật khẩu mới.");
+        });
+    }
+
+    private void showAuth(String page) {
+        footer.setVisible(false);
+        screenLayout.show(screens, page);
+        revalidate();
+    }
+
+    private void setAuthBusy(boolean waiting) {
+        for (Component page : screens.getComponents()) {
+            if (page instanceof AuthScreen) {
+                ((AuthScreen) page).setBusy(waiting);
+            }
         }
     }
 
@@ -583,7 +521,9 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void selectMovie(MovieItem movie) {
-        if (busy) return;
+        if (busy) {
+            return;
+        }
         activeMovie = movie;
         homeShowtimes.movie(movie.id, movie.title, movie.genre + " • " + movie.minutes + " phút", movie.poster);
         hero.movie(movie.title, movie.genre + " • " + movie.minutes + " phút", movie.poster,
@@ -593,7 +533,9 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void chooseShow(int showId) {
-        if (busy) return;
+        if (busy) {
+            return;
+        }
         for (int i = 0; i < showModel.getRowCount(); i++) {
             if (Integer.toString(showId).equals(showModel.getValueAt(i, 0).toString())) {
                 navigate("SHOWS", false);
@@ -984,7 +926,7 @@ public final class BasicClientUI extends JFrame {
                     }
                     loginName.setText(email);
                     registerPassword.setText("");
-                    screenLayout.show(screens, "LOGIN");
+                    showAuth("LOGIN");
                     info("Tạo tài khoản thành công. Hãy đăng nhập.");
                 });
     }
@@ -1007,15 +949,12 @@ public final class BasicClientUI extends JFrame {
             }
             userLabel.setText("Chào " + dec(data[3]));
             userLabel.setToolTipText(dec(data[3]));
-            try {
-                java.util.prefs.Preferences prefs = java.util.prefs.Preferences.userNodeForPackage(BasicClientUI.class);
-                if (rememberLogin.isSelected()) prefs.put("loginName", name); else prefs.remove("loginName");
-            } catch (SecurityException ignored) { }
             admin = "admin".equals(dec(data[5]));
             staff = admin || "staff".equals(dec(data[5]));
             adminNavGroup.setVisible(admin);
             staffNavGroup.setVisible(staff);
             loginPassword.setText("");
+            footer.setVisible(true);
             screenLayout.show(screens, "MAIN");
             heroTimer.start();
             navigate("MOVIES");
@@ -1029,7 +968,7 @@ public final class BasicClientUI extends JFrame {
                 return;
             }
             resetSession();
-            screenLayout.show(screens, "LOGIN");
+            showAuth("LOGIN");
             status.setText("Đã đăng xuất");
         });
     }
@@ -2066,6 +2005,7 @@ public final class BasicClientUI extends JFrame {
             return;
         }
         busy = true;
+        setAuthBusy(true);
         status.setText("Đang liên hệ máy chủ...");
         new SwingWorker<List<String>, Void>() {
             @Override
@@ -2079,17 +2019,19 @@ public final class BasicClientUI extends JFrame {
             @Override
             protected void done() {
                 busy = false;
+                setAuthBusy(false);
                 try {
                     onSuccess.accept(get());
-                if (!busy && "Đang liên hệ máy chủ...".equals(status.getText()))
-                    status.setText("Sẵn sàng • Đã kết nối máy chủ");
+                    if (!busy && "Đang liên hệ máy chủ...".equals(status.getText())) {
+                        status.setText("Sẵn sàng • Đã kết nối máy chủ");
+                    }
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                     showError("Thao tác bị gián đoạn");
                 } catch (ExecutionException | RuntimeException ex) {
                     Throwable cause = ex instanceof ExecutionException ? ex.getCause() : ex;
                     resetSession();
-                    screenLayout.show(screens, "LOGIN");
+                    showAuth("LOGIN");
                     showError("Không liên hệ được máy chủ: " + cause.getMessage());
                 } finally {
                     // Không bỏ mất EOF hoặc event đến khi request đang chạy.
@@ -2132,7 +2074,8 @@ public final class BasicClientUI extends JFrame {
             showError(lines.get(0).substring(4));
             return false;
         }
-        if (!lines.get(0).startsWith("OK;" + expected)) {
+        String prefix = "OK;" + expected;
+        if (!lines.get(0).equals(prefix) && !lines.get(0).startsWith(prefix + ";")) {
             showError("Phản hồi máy chủ không hợp lệ");
             return false;
         }
@@ -2141,23 +2084,30 @@ public final class BasicClientUI extends JFrame {
 
     private void showError(String message) {
         status.setText(message);
-        JOptionPane.showMessageDialog(this, message, "Có lỗi", JOptionPane.ERROR_MESSAGE);
+        AuthMessageDialog.show(this, "Không thể tiếp tục", message, true);
     }
 
     private void info(String message) {
         status.setText(message);
-        JOptionPane.showMessageDialog(this, message, "Galaxy Cinema", JOptionPane.INFORMATION_MESSAGE);
+        AuthMessageDialog.show(this, "Galaxy Cinema", message, false);
     }
 
     private void handlePendingDisconnect() {
         if (!busy && disconnectedClient != null && client == disconnectedClient) {
             resetSession();
-            screenLayout.show(screens, "LOGIN");
+            showAuth("LOGIN");
             showError("Mất kết nối máy chủ. Hãy đăng nhập lại.");
         }
     }
 
     private void resetSession() {
+        clearRecoverySecrets();
+        pendingRecoveryEmail = "";
+        // Remember only in this window; never share credentials across clients.
+        loginPassword.setText("");
+        if (!rememberLogin.isSelected()) {
+            loginName.setText("");
+        }
         staff = false;
         staffNavGroup.setVisible(false);
         pendingElectronicTicket = null;
