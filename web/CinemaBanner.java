@@ -17,6 +17,7 @@ final class CinemaBanner extends JPanel {
     private final JTextArea title = new JTextArea();
     private final JLabel eyebrow = new JLabel("GALAXY CINEMA  /  KHÁM PHÁ");
     private final JLabel subtitle = new JLabel("Chọn phim. Chọn ghế. Tận hưởng.");
+    private final JTextArea description = UiTheme.copy("Khám phá câu chuyện tiếp theo của bạn.", 17);
     private final JButton book = UiTheme.primary("Khám phá suất chiếu");
     private Runnable selected = () -> {
     };
@@ -24,32 +25,43 @@ final class CinemaBanner extends JPanel {
     CinemaBanner() {
         super(new BorderLayout());
         setOpaque(false);
-        setBorder(new EmptyBorder(24, 28, 24, 28));
-        setPreferredSize(new Dimension(500, 200));
+        setBorder(new EmptyBorder(28, 36, 24, 30));
+        setPreferredSize(new Dimension(500, 310));
         JPanel words = new JPanel();
         words.setOpaque(false);
         words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
-        eyebrow.setForeground(UiTheme.PRIMARY);
-        eyebrow.setFont(UiTheme.font(11, Font.BOLD));
+        eyebrow.setForeground(UiTheme.PURPLE);
+        eyebrow.setFont(UiTheme.font(12, Font.BOLD));
         words.add(eyebrow);
         words.add(Box.createVerticalStrut(12));
         title.setText("TRẢI NGHIỆM\nMÀN ẢNH RỘNG LỚN");
-        title.setFont(UiTheme.font(28, Font.BOLD));
+        title.setFont(UiTheme.font(47, Font.BOLD));
         title.setForeground(UiTheme.TEXT);
         title.setEditable(false);
         title.setFocusable(false);
         title.setOpaque(false);
         title.setLineWrap(true);
         title.setWrapStyleWord(true);
-        title.setPreferredSize(new Dimension(390, 78));
-        title.setMaximumSize(new Dimension(440, 78));
+        title.setPreferredSize(new Dimension(460, 100));
+        title.setMaximumSize(new Dimension(540, 100));
         words.add(title);
         words.add(Box.createVerticalStrut(6));
         subtitle.setForeground(UiTheme.MUTED);
-        subtitle.setFont(UiTheme.font(12, Font.PLAIN));
+        subtitle.setFont(UiTheme.font(15, Font.PLAIN));
         words.add(subtitle);
-        words.add(Box.createVerticalStrut(16));
-        book.setText("Đặt vé ngay  →");
+        words.add(Box.createVerticalStrut(8));
+        description.setForeground(UiTheme.TEXT);
+        description.setMaximumSize(new Dimension(480, 44));
+        description.setPreferredSize(new Dimension(420, 44));
+        words.add(description);
+        words.add(Box.createVerticalStrut(14));
+        book.setText("Chọn suất chiếu");
+        book.setIcon(HomeIcons.icon("arrow", 22));
+        book.setHorizontalTextPosition(SwingConstants.LEFT);
+        book.setIconTextGap(16);
+        book.setFont(UiTheme.font(18, Font.BOLD));
+        book.setPreferredSize(new Dimension(230, 48));
+        book.setMaximumSize(new Dimension(250, 48));
         book.addActionListener(e -> selected.run());
         words.add(book);
         for (Component c : words.getComponents()) {
@@ -74,13 +86,33 @@ final class CinemaBanner extends JPanel {
         eyebrow.setText(text);
     }
 
+    void description(String value) {
+        description.setText(value == null || value.trim().isEmpty() ? "Trải nghiệm điện ảnh cùng Galaxy Cinema." : value);
+    }
+
+    @Override
+    public void doLayout() {
+        int width = Math.max(210, Math.min(540, getWidth() * 60 / 100));
+        title.setPreferredSize(new Dimension(width, getHeight() < 285 ? 64 : 88));
+        title.setMaximumSize(new Dimension(width, getHeight() < 285 ? 64 : 88));
+        title.setFont(UiTheme.font(title.getText().length() > 24 ? 31 : getWidth() < 850 ? 34 : 47, Font.BOLD));
+        title.setToolTipText(title.getText());
+        description.setVisible(getHeight() >= 285);
+        description.setMaximumSize(new Dimension(width, 40));
+        super.doLayout();
+    }
+
     @Override
     protected void paintComponent(Graphics graphics) {
         Graphics2D g = (Graphics2D) graphics.create();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         Shape originalClip = g.getClip();
         g.clip(new java.awt.geom.RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 24, 24));
-        BufferedImage background = poster == null ? CYBER_HERO : poster;
+        BufferedImage background = poster != null && poster.getWidth() >= 800
+                && poster.getWidth() > poster.getHeight() ? poster : CYBER_HERO;
+        if (background == null) {
+            background = poster;
+        }
         if (background != null) {
             double scale = Math.max(getWidth() / (double) background.getWidth(), getHeight() / (double) background.getHeight());
             int w = (int) (background.getWidth() * scale), h = (int) (background.getHeight() * scale);

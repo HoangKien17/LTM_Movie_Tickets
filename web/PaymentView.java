@@ -44,7 +44,6 @@ final class PaymentView {
         root.setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
         JPanel heading = new JPanel(new BorderLayout(0, 14));
         heading.setOpaque(false);
-        heading.add(new BookingSteps(3), BorderLayout.NORTH);
         JLabel pageTitle = new JLabel("Thanh toán đơn vé");
         pageTitle.setFont(UiTheme.font(25, Font.BOLD));
         heading.add(pageTitle, BorderLayout.SOUTH);

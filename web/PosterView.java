@@ -4,20 +4,27 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import javax.swing.JPanel;
 
-/** Cover-fit poster shared by the showtime sidebar and the ticket. */
+/**
+ * Cover-fit poster shared by the showtime sidebar and the ticket.
+ */
 final class PosterView extends JPanel {
+
     private final BufferedImage image;
     private final String title;
+
     PosterView(BufferedImage image, String title) {
         this.image = image;
         this.title = title;
         setOpaque(false);
     }
-    @Override protected void paintComponent(Graphics graphics) {
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
         Graphics2D g = (Graphics2D) graphics.create();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         int w = getWidth(), h = getHeight();
+        Shape originalClip = g.getClip();
         g.clip(new java.awt.geom.RoundRectangle2D.Double(0, 0, w, h, 12, 12));
         g.setPaint(new GradientPaint(0, 0, UiTheme.NAVY_LIGHT, w, h, new Color(71, 39, 112)));
         g.fillRect(0, 0, w, h);
@@ -31,6 +38,11 @@ final class PosterView extends JPanel {
             String first = title.isEmpty() ? "G" : title.substring(0, 1).toUpperCase(java.util.Locale.ROOT);
             g.drawString(first, (w - g.getFontMetrics().stringWidth(first)) / 2, h / 2 + 12);
         }
+        g.setClip(originalClip);
+        boolean selected = Boolean.TRUE.equals(getClientProperty("selected"));
+        g.setColor(selected ? UiTheme.PRIMARY : UiTheme.LINE);
+        g.setStroke(new BasicStroke(selected ? 2f : 1f));
+        g.drawRoundRect(1, 1, w - 3, h - 3, 12, 12);
         g.dispose();
     }
 }

@@ -47,6 +47,7 @@ public final class BasicServer {
     private final BasicService basic = new BasicService();
     private final CinemaService cinema = new CinemaService();
     private final PaymentService payments = new PaymentService();
+    private final service.NotificationService notifications = new service.NotificationService();
     private final service.PasswordResetService passwordResets;
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
 
@@ -65,10 +66,11 @@ public final class BasicServer {
             app.cinema.rooms();
             app.tickets.verifyReady();
             app.payments.verifyReady();
+            app.notifications.verifyReady();
             app.serve();
         } catch (SQLException ex) {
             System.err.println("MySQL chưa sẵn sàng. Hãy chạy database/schema.sql "
-                    + "(database cũ: chạy thêm database/migrate_v2.sql) và kiểm tra MOVIE_DB_*.");
+                    + "(database cũ: chạy thêm database/migrate_v2.sql và database/migrate_notifications_v4.sql) và kiểm tra MOVIE_DB_*.");
             System.err.println(ex.getMessage());
             System.exit(1);
         } catch (IOException ex) {
@@ -195,6 +197,15 @@ public final class BasicServer {
                     signedIn(session);
                     session.user = basic.profile(session.user.getId());
                     return rows("PROFILE", "PROFILE", Collections.singletonList(profileRow(session.user)));
+                case "GET_NOTIFICATIONS":
+                    count(p, 1);
+                    signedIn(session);
+                    return rows("NOTIFICATIONS", "NOTIFICATION", notifications.list(session.user.getId()));
+                case "MARK_NOTIFICATIONS_READ":
+                    count(p, 2);
+                    signedIn(session);
+                    notifications.markRead(session.user.getId(), dec(p[1]));
+                    return one("OK;NOTIFICATIONS_READ");
                 case "UPDATE_PROFILE":
                     count(p, 6);
                     signedIn(session);
