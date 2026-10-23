@@ -65,22 +65,41 @@ public final class TicketRepository {
         }
     }
 
+    public String[] inspectBooking(long bookingId) throws SQLException {
+        try (Connection c = CSDL.getConnection()) {
+            return detail(c, bookingId);
+        }
+    }
+
     public String[] checkIn(int staffId, String token) throws SQLException {
+        return checkIn(staffId, token, null);
+    }
+
+    public String[] checkIn(int staffId, long bookingId) throws SQLException {
+        return checkIn(staffId, null, bookingId);
+    }
+
+    private String[] checkIn(int staffId, String token, Long bookingId) throws SQLException {
         try (Connection c = CSDL.getConnection()) {
             c.setAutoCommit(false);
             try {
                 long id;
                 // Cùng khóa bản ghi đơn với thao tác hủy: chỉ một kết quả được commit.
                 try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT id,trang_thai,checked_in_at FROM don_dat_ve WHERE ticket_token=? FOR UPDATE")) {
-                    ps.setString(1, token);
+                        "SELECT id,trang_thai,checked_in_at FROM don_dat_ve WHERE "
+                        + (bookingId == null ? "ticket_token=?" : "id=?") + " FOR UPDATE")) {
+                    if (bookingId == null) {
+                        ps.setString(1, token); 
+                    }else {
+                        ps.setLong(1, bookingId);
+                    }
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next()) {
                             throw new IllegalArgumentException("Mã vé không tồn tại");
                         }
                         id = rs.getLong(1);
                         if (!"active".equals(rs.getString(2))) {
-                            throw new IllegalArgumentException("Vé đã hủy, không được vào rạp");
+                            throw new IllegalArgumentException("Đơn chưa thanh toán, đã hủy hoặc hết hạn; không được vào rạp");
                         }
                         if (rs.getTimestamp(3) != null) {
                             throw new IllegalArgumentException("Vé đã được sử dụng");

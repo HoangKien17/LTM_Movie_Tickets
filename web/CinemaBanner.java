@@ -5,6 +5,7 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.text.DefaultCaret;
 
 /**
  * Movie-specific artwork with independent description scrolling and a fixed
@@ -40,6 +41,8 @@ final class CinemaBanner extends JPanel {
         title.setForeground(UiTheme.TEXT);
         title.setEditable(false);
         title.setFocusable(false);
+        // Updating an off-screen banner must not scroll the outer movie list to its caret.
+        ((DefaultCaret) title.getCaret()).setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
         title.setOpaque(false);
         title.setLineWrap(true);
         title.setWrapStyleWord(true);
@@ -53,6 +56,7 @@ final class CinemaBanner extends JPanel {
         description.setForeground(UiTheme.TEXT);
         description.setEditable(false);
         description.setFocusable(false);
+        ((DefaultCaret) description.getCaret()).setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
         description.setOpaque(false);
         description.setLineWrap(true);
         description.setWrapStyleWord(true);
@@ -76,8 +80,9 @@ final class CinemaBanner extends JPanel {
         book.addActionListener(e -> {
             if (selected != null) {
                 selected.run();
-        
-            }});
+
+            }
+        });
         book.setEnabled(false);
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         actions.setOpaque(false);
@@ -106,7 +111,6 @@ final class CinemaBanner extends JPanel {
     void description(String value) {
         description.setText(value == null || value.trim().isEmpty()
                 ? "Trải nghiệm điện ảnh cùng Galaxy Cinema." : value);
-        description.setCaretPosition(0);
         descriptionScroll.getViewport().setViewPosition(new Point());
     }
 

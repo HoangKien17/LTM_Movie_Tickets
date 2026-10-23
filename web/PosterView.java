@@ -5,7 +5,7 @@ import java.awt.image.BufferedImage;
 import javax.swing.JPanel;
 
 /**
- * Cover-fit poster shared by the showtime sidebar and the ticket.
+ * Aspect-fit poster: keep the entire image visible inside its frame.
  */
 final class PosterView extends JPanel {
 
@@ -29,7 +29,7 @@ final class PosterView extends JPanel {
         g.setPaint(new GradientPaint(0, 0, UiTheme.NAVY_LIGHT, w, h, new Color(71, 39, 112)));
         g.fillRect(0, 0, w, h);
         if (image != null) {
-            double scale = Math.max(w / (double) image.getWidth(), h / (double) image.getHeight());
+            double scale = Math.min(w / (double) image.getWidth(), h / (double) image.getHeight());
             int iw = (int) (image.getWidth() * scale), ih = (int) (image.getHeight() * scale);
             g.drawImage(image, (w - iw) / 2, (h - ih) / 2, iw, ih, null);
         } else {

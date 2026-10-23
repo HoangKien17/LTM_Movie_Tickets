@@ -1,6 +1,8 @@
 package web;
 
 import java.awt.*;
+import java.awt.event.*;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.print.PrinterJob;
 import java.io.*;
@@ -17,115 +19,62 @@ final class ElectronicTicketDialog {
 
     static void show(JFrame owner, String[] ticket) {
         JDialog dialog = new JDialog(owner, "Vé điện tử — đơn #" + ticket[0], true);
+        dialog.setUndecorated(true);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setContentPane(content(ticket, dialog));
         dialog.pack();
-        dialog.setMinimumSize(new Dimension(960, 650));
+        Rectangle bounds = dialog.getGraphicsConfiguration().getBounds();
+        Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(dialog.getGraphicsConfiguration());
+        dialog.setSize(Math.min(dialog.getWidth(), bounds.width - insets.left - insets.right - 32),
+                Math.min(dialog.getHeight(), bounds.height - insets.top - insets.bottom - 32));
         dialog.setLocationRelativeTo(owner);
-        dialog.setVisible(true);
+        dialog.getRootPane().registerKeyboardAction(event -> dialog.dispose(), KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
+        try {
+            dialog.setShape(new RoundRectangle2D.Double(0, 0, dialog.getWidth(), dialog.getHeight(), 26, 26));
+        } catch (UnsupportedOperationException ignored) {
+        }
+        try {
+            dialog.setVisible(true);
+        } finally {
+            dialog.dispose();
+        }
     }
 
     static JPanel content(String[] ticket, Component dialog) {
-        JPanel root = new JPanel(new BorderLayout(20, 18));
-        root.setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
-        root.setBackground(UiTheme.BACKGROUND);
-        root.setPreferredSize(new Dimension(1000, 670));
-        JLabel heading = new JLabel("Thanh toán & vé điện tử");
-        heading.setFont(UiTheme.font(25, Font.BOLD));
-        root.add(heading, BorderLayout.NORTH);
-        boolean active = "active".equals(ticket[5]) && ticket[6].isEmpty();
-        String state = !"active".equals(ticket[5]) ? "Đơn không còn hiệu lực"
-                : ticket[6].isEmpty() ? "Vé hợp lệ • Chưa sử dụng" : "Đã sử dụng: " + ticket[6].replace('T', ' ');
-        String food = ticket.length > 8 && !ticket[8].isEmpty() ? ticket[8] : "Không có";
-        String amount = ticket.length > 9 ? BasicClientUI.formatMoney(ticket[9]) : "—";
-        JPanel columns = new JPanel(new GridLayout(1, 2, 20, 0));
-        columns.setOpaque(false);
-        UiTheme.RoundedPanel details = UiTheme.surface();
-        details.setLayout(new BorderLayout(0, 18));
-        JLabel success = new JLabel(active ? "Thanh toán thành công" : state);
-        success.setForeground(active ? UiTheme.GREEN : UiTheme.RED);
-        success.setFont(UiTheme.font(21, Font.BOLD));
-        details.add(success, BorderLayout.NORTH);
-        JPanel body = new JPanel();
-        body.setOpaque(false);
-        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
-        body.add(UiTheme.copy("Đơn #" + ticket[0] + "\n\nPhim: " + ticket[1] + "\nPhòng: " + ticket[2]
-                + "\nSuất chiếu: " + ticket[3].replace('T', ' ') + "\nGhế: " + ticket[4]
-                + "\n\nBắp nước: " + food, 15));
-        body.add(Box.createVerticalStrut(20));
-        JLabel total = new JLabel("Tổng thanh toán  " + amount);
-        total.setForeground(UiTheme.PRIMARY);
-        total.setFont(UiTheme.font(22, Font.BOLD));
-        body.add(total);
-        for (Component c : body.getComponents()) {
-            if (c instanceof JComponent) {
-                ((JComponent) c).setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel root = new JPanel(new BorderLayout(0, 20)) {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                AuthStyle.quality(g);
+                g.setColor(UiTheme.BACKGROUND);
+                g.fillRoundRect(0, 0, getWidth(), getHeight(), 26, 26);
+                g.setPaint(new GradientPaint(0, 0, UiTheme.PRIMARY, getWidth(), getHeight(), UiTheme.PURPLE));
+                g.drawRoundRect(1, 1, getWidth() - 3, getHeight() - 3, 26, 26);
+                g.dispose();
             }
-        }
-        details.add(body, BorderLayout.CENTER);
-        JTextArea note = UiTheme.copy("Xuất trình mã vé tại quầy soát vé. Một mã áp dụng cho toàn bộ ghế trong đơn.", 13);
-        note.setRows(3);
-        details.add(note, BorderLayout.SOUTH);
-        columns.add(details);
-        TicketCard stub = new TicketCard();
-        JPanel top = new JPanel();
-        top.setOpaque(false);
-        top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-        JLabel brand = new JLabel("GALAXY CINEMA  /  VÉ ĐIỆN TỬ");
-        brand.setFont(UiTheme.font(13, Font.BOLD));
-        brand.setForeground(UiTheme.PRIMARY);
-        top.add(brand);
-        top.add(Box.createVerticalStrut(14));
-        JTextArea film = UiTheme.copy(ticket[1], 23);
-        film.setFont(UiTheme.font(23, Font.BOLD));
-        film.setForeground(UiTheme.TEXT);
-        film.setRows(2);
-        top.add(film);
-        top.add(Box.createVerticalStrut(6));
-        top.add(UiTheme.copy(ticket[2] + " • " + ticket[3].replace('T', ' ') + "\nGhế: " + ticket[4], 13));
-        for (Component c : top.getComponents()) {
-            if (c instanceof JComponent) {
-                ((JComponent) c).setAlignmentX(Component.LEFT_ALIGNMENT);
-            }
-        }
-        stub.header(top);
-        JPanel qrArea = new JPanel(new BorderLayout(0, 8));
-        qrArea.setOpaque(false);
-        if (active) {
-            // Token only keeps the QR small; the surrounding ticket carries readable details.
-            String payload = TicketCode.payload(ticket[7]);
-            BufferedImage qr = QrImages.encode(payload, 224);
-            JLabel codeImage = new JLabel(new ImageIcon(qr), SwingConstants.CENTER);
-            codeImage.setToolTipText("Mã vé cho toàn bộ ghế trong đơn #" + ticket[0]);
-            qrArea.add(codeImage, BorderLayout.CENTER);
-        } else {
-            JLabel unavailable = new JLabel("QR không còn khả dụng", SwingConstants.CENTER);
-            unavailable.setForeground(UiTheme.MUTED);
-            qrArea.add(unavailable, BorderLayout.CENTER);
-        }
-        JLabel id = new JLabel("Mã đơn: GC-" + ticket[0], SwingConstants.CENTER);
-        id.setFont(UiTheme.font(12, Font.BOLD));
-        qrArea.add(id, BorderLayout.SOUTH);
-        stub.add(qrArea, BorderLayout.CENTER);
-        JLabel badge = new JLabel(state, SwingConstants.CENTER);
-        badge.setFont(UiTheme.font(12, Font.BOLD));
-        badge.setForeground(active ? UiTheme.GREEN : UiTheme.RED);
-        stub.add(badge, BorderLayout.SOUTH);
-        columns.add(stub);
-        root.add(columns, BorderLayout.CENTER);
+        };
+        root.setOpaque(false);
+        root.setBorder(BorderFactory.createEmptyBorder(24, 26, 24, 26));
+        root.setPreferredSize(new Dimension(1020, 800));
+        root.add(header(dialog), BorderLayout.NORTH);
+        JPanel sheet = ticketSheet(ticket);
+        JScrollPane scroll = UiTheme.scrollContent(sheet);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        root.add(scroll, BorderLayout.CENTER);
         JPanel bottom = new JPanel(new BorderLayout(16, 0));
         bottom.setOpaque(false);
-        if (active) {
-            JTextField code = new JTextField(TicketCode.payload(ticket[7]));
-            code.setEditable(false);
-            UiTheme.styleField(code);
-            code.setToolTipText("Sao chép mã này để nhân viên nhập thủ công");
-            bottom.add(code, BorderLayout.CENTER);
+        bottom.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UiTheme.LINE), BorderFactory.createEmptyBorder(16, 0, 0, 0)));
+        bottom.add(TicketDetailsView.text("Mã tra cứu tại quầy: #" + ticket[0] + "\nMột mã áp dụng cho toàn bộ ghế trong đơn.", 13, UiTheme.MUTED), BorderLayout.CENTER);
+        if (TicketDetailsView.usable(ticket)) {
             JPanel actions = new JPanel(new GridLayout(1, 2, 10, 0));
             actions.setOpaque(false);
             JButton save = UiTheme.primary("Tải vé PNG");
-            save.addActionListener(e -> saveTicket(stub, dialog, ticket[0]));
+            save.setName("save-electronic-ticket");
+            save.addActionListener(event -> saveTicket(ticket, dialog));
             JButton print = UiTheme.secondary("In vé");
-            print.addActionListener(e -> printTicket(stub, dialog));
+            print.addActionListener(event -> printTicket(ticket, dialog));
             actions.add(save);
             actions.add(print);
             bottom.add(actions, BorderLayout.EAST);
@@ -134,10 +83,153 @@ final class ElectronicTicketDialog {
         return root;
     }
 
-    private static void saveTicket(JPanel ticket, Component parent, String id) {
+    private static JPanel header(Component parent) {
+        JPanel header = new JPanel(new BorderLayout(0, 16));
+        header.setOpaque(false);
+        JPanel brandRow = new JPanel(new BorderLayout());
+        brandRow.setOpaque(false);
+        JLabel brand = new JLabel("GALAXY CINEMA", UiTheme.orbitIcon(30), SwingConstants.LEFT);
+        brand.setFont(AuthStyle.wordmark(13));
+        brand.setForeground(UiTheme.TEXT);
+        brand.setIconTextGap(10);
+        brandRow.add(brand, BorderLayout.WEST);
+        JButton close = new JButton(HomeIcons.icon("close", 20));
+        close.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 0));
+        close.setContentAreaFilled(false);
+        close.setBorderPainted(false);
+        close.setForeground(UiTheme.MUTED);
+        close.setToolTipText("Đóng vé điện tử");
+        close.addActionListener(event -> {
+            if (parent instanceof Window) {
+                ((Window) parent).dispose();
+        
+            }});
+        brandRow.add(close, BorderLayout.EAST);
+        header.add(brandRow, BorderLayout.NORTH);
+        header.add(TicketDetailsView.label("Vé điện tử của bạn", 27, Font.BOLD, UiTheme.TEXT), BorderLayout.CENTER);
+        if (parent instanceof Window) {
+            Window window = (Window) parent;
+            MouseAdapter drag = new MouseAdapter() {
+                private Point pressed;
+
+                public void mousePressed(MouseEvent event) {
+                    if (SwingUtilities.isLeftMouseButton(event)) {
+                        pressed = event.getLocationOnScreen();
+                
+                    }}
+
+                public void mouseDragged(MouseEvent event) {
+                    if (pressed == null) {
+                        return;
+                    }
+                    Point next = event.getLocationOnScreen();
+                    window.setLocation(window.getX() + next.x - pressed.x, window.getY() + next.y - pressed.y);
+                    pressed = next;
+                }
+
+                public void mouseReleased(MouseEvent event) {
+                    pressed = null;
+                }
+            };
+            brandRow.addMouseListener(drag);
+            brandRow.addMouseMotionListener(drag);
+            brand.addMouseListener(drag);
+            brand.addMouseMotionListener(drag);
+        }
+        return header;
+    }
+
+    private static JPanel ticketSheet(String[] ticket) {
+        JPanel sheet = new JPanel(new GridLayout(1, 2, 18, 0));
+        sheet.setOpaque(false);
+        JPanel left = new JPanel(new BorderLayout(0, 16));
+        left.setOpaque(false);
+        JPanel success = new JPanel(new BorderLayout(11, 6));
+        success.setOpaque(false);
+        boolean paid = "active".equals(TicketDetailsView.value(ticket, 5));
+        JLabel icon = new JLabel(HomeIcons.icon(paid ? "check" : "ticket", 32));
+        icon.setForeground(paid ? UiTheme.GREEN : TicketDetailsView.stateColor(ticket));
+        success.add(icon, BorderLayout.WEST);
+        success.add(TicketDetailsView.label(paid ? "Thanh toán thành công" : TicketDetailsView.state(ticket), 20, Font.BOLD,
+                paid ? UiTheme.GREEN : TicketDetailsView.stateColor(ticket)), BorderLayout.CENTER);
+        left.add(success, BorderLayout.NORTH);
+        left.add(new TicketDetailsView(ticket), BorderLayout.CENTER);
+        sheet.add(left);
+
+        TicketCard stub = new TicketCard();
+        JPanel top = new JPanel(new BorderLayout(0, 12));
+        top.setOpaque(false);
+        top.add(TicketDetailsView.label("GALAXY CINEMA  /  VÉ ĐIỆN TỬ", 11, Font.BOLD, UiTheme.PRIMARY), BorderLayout.NORTH);
+        JTextArea movie = TicketDetailsView.text(ticket[1], 23, UiTheme.TEXT);
+        movie.setFont(UiTheme.font(23, Font.BOLD));
+        movie.setRows(2);
+        top.add(movie, BorderLayout.CENTER);
+        top.add(TicketDetailsView.text(ticket[2] + " • " + TicketDetailsView.date(ticket[3], "HH:mm • dd/MM/yyyy")
+                + "\nGhế: " + ticket[4].replace(",", ", "), 13, UiTheme.MUTED), BorderLayout.SOUTH);
+        stub.header(top);
+        JPanel qrArea = new JPanel(new BorderLayout(0, 12));
+        qrArea.setOpaque(false);
+        if (TicketDetailsView.usable(ticket)) {
+            JLabel qr = new JLabel(new ImageIcon(QrImages.encode(TicketCode.payload(ticket[7]), 232)), SwingConstants.CENTER);
+            qr.setName("ticket-qr-image");
+            qr.setToolTipText("Mã vé cho toàn bộ ghế trong đơn #" + ticket[0]);
+            qrArea.add(qr, BorderLayout.CENTER);
+        } else {
+            JLabel unavailable = TicketDetailsView.label("QR không còn khả dụng", 14, Font.PLAIN, UiTheme.MUTED);
+            unavailable.setHorizontalAlignment(SwingConstants.CENTER);
+            unavailable.setPreferredSize(new Dimension(232, 232));
+            qrArea.add(unavailable, BorderLayout.CENTER);
+        }
+        JLabel code = TicketDetailsView.label("MÃ ĐƠN  #" + ticket[0], 19, Font.BOLD, UiTheme.TEXT);
+        code.setHorizontalAlignment(SwingConstants.CENTER);
+        qrArea.add(code, BorderLayout.SOUTH);
+        stub.add(qrArea, BorderLayout.CENTER);
+        JPanel footer = new JPanel(new GridLayout(2, 1, 0, 7));
+        footer.setOpaque(false);
+        JLabel state = TicketDetailsView.label(TicketDetailsView.state(ticket), 12, Font.BOLD, TicketDetailsView.stateColor(ticket));
+        state.setHorizontalAlignment(SwingConstants.CENTER);
+        footer.add(state);
+        JLabel instruction = TicketDetailsView.label("Xuất trình QR hoặc mã đơn tại quầy soát vé", 11, Font.PLAIN, UiTheme.MUTED);
+        instruction.setHorizontalAlignment(SwingConstants.CENTER);
+        footer.add(instruction);
+        stub.add(footer, BorderLayout.SOUTH);
+        sheet.add(stub);
+        return sheet;
+    }
+
+    static BufferedImage renderTicket(String[] ticket) {
+        JPanel sheet = ticketSheet(ticket);
+        sheet.setSize(960, 640);
+        layout(sheet);
+        sheet.setSize(960, Math.max(640, sheet.getPreferredSize().height));
+        layout(sheet);
+        BufferedImage image = new BufferedImage(sheet.getWidth() * 2, sheet.getHeight() * 2, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = image.createGraphics();
+        graphics.setColor(UiTheme.BACKGROUND);
+        graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        graphics.scale(2, 2);
+        sheet.printAll(graphics);
+        graphics.dispose();
+        return image;
+    }
+
+    private static void layout(Container parent) {
+        parent.doLayout();
+        for (Component child : parent.getComponents()) {
+            if (child instanceof Container) {
+                layout((Container) child);
+            }
+        }
+    }
+
+    private static Window owner(Component parent) {
+        return parent instanceof Window ? (Window) parent : parent == null ? null : SwingUtilities.getWindowAncestor(parent);
+    }
+
+    private static void saveTicket(String[] ticket, Component parent) {
         JFileChooser picker = new JFileChooser();
         picker.setFileFilter(new FileNameExtensionFilter("PNG", "png"));
-        picker.setSelectedFile(new File("ve-galaxy-" + id + ".png"));
+        picker.setSelectedFile(new File("ve-galaxy-" + ticket[0] + ".png"));
         if (picker.showSaveDialog(parent) != JFileChooser.APPROVE_OPTION) {
             return;
         }
@@ -145,50 +237,41 @@ final class ElectronicTicketDialog {
         if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".png")) {
             file = new File(file + ".png");
         }
-        if (file.exists() && JOptionPane.showConfirmDialog(parent, "Ghi đè ảnh đã có?", "Tải vé",
-                JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        if (file.exists() && !AdminDialog.confirm(owner(parent), "Thay thế ảnh vé?", "Ảnh đã tồn tại:\n" + file.getName(), "Thay thế ảnh")) {
             return;
         }
         try {
-            BufferedImage image = new BufferedImage(ticket.getWidth() * 2, ticket.getHeight() * 2, BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = image.createGraphics();
-            g.setColor(UiTheme.BACKGROUND);
-            g.fillRect(0, 0, image.getWidth(), image.getHeight());
-            g.scale(2, 2);
-            ticket.printAll(g);
-            g.dispose();
-            if (!ImageIO.write(image, "png", file)) {
+            if (!ImageIO.write(renderTicket(ticket), "png", file)) {
                 throw new IOException("Không ghi được PNG");
             }
-            JOptionPane.showMessageDialog(parent, "Đã lưu vé điện tử");
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(parent, "Không lưu được vé: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+            AuthMessageDialog.show(owner(parent), "Đã lưu vé điện tử", "Vé đơn #" + ticket[0] + " đã được lưu thành công.\n\n" + file.getAbsolutePath(), false);
+        } catch (IOException | RuntimeException ex) {
+            AuthMessageDialog.show(owner(parent), "Không lưu được vé", ex.getMessage(), true);
         }
     }
 
-    private static void printTicket(JPanel ticket, Component parent) {
+    private static void printTicket(String[] ticket, Component parent) {
+        BufferedImage image = renderTicket(ticket);
         PrinterJob job = PrinterJob.getPrinterJob();
-        job.setJobName("Vé Galaxy Cinema");
-        job.setPrintable((graphics, pageFormat, pageIndex) -> {
-            if (pageIndex > 0) {
+        job.setJobName("Vé Galaxy Cinema #" + ticket[0]);
+        job.setPrintable((graphics, format, page) -> {
+            if (page > 0) {
                 return java.awt.print.Printable.NO_SUCH_PAGE;
             }
             Graphics2D g = (Graphics2D) graphics.create();
-            double scale = Math.min(pageFormat.getImageableWidth() / ticket.getWidth(),
-                    pageFormat.getImageableHeight() / ticket.getHeight());
-            g.translate(pageFormat.getImageableX(), pageFormat.getImageableY());
+            double scale = Math.min(format.getImageableWidth() / image.getWidth(), format.getImageableHeight() / image.getHeight());
+            g.translate(format.getImageableX(), format.getImageableY());
             g.scale(scale, scale);
-            ticket.printAll(g);
+            g.drawImage(image, 0, 0, null);
             g.dispose();
             return java.awt.print.Printable.PAGE_EXISTS;
         });
         try {
             if (job.printDialog()) {
                 job.print();
-            }
-        } catch (java.awt.print.PrinterException ex) {
-            JOptionPane.showMessageDialog(parent, "Không thể in vé: " + ex.getMessage(),
-                    "In vé", JOptionPane.ERROR_MESSAGE);
+        
+            }} catch (java.awt.print.PrinterException ex) {
+            AuthMessageDialog.show(owner(parent), "Không thể in vé", ex.getMessage(), true);
         }
     }
 }

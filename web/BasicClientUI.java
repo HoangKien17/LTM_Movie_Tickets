@@ -116,6 +116,8 @@ public final class BasicClientUI extends JFrame {
     private AuthScreen resetCodeScreen;
 
     private final JPanel movieGrid = new MovieGrid();
+    private final Map<Integer, PosterView> moviePosters = new LinkedHashMap<>();
+    private int movieViewportWidth;
     private final List<MovieItem> movies = new ArrayList<>();
     private final JTextField movieSearch = UiTheme.hintField(20, "Tìm phim, thể loại...");
     private final CinemaBanner hero = new CinemaBanner();
@@ -520,7 +522,11 @@ public final class BasicClientUI extends JFrame {
         scroll.getViewport().addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent event) {
-                renderMovies();
+                int width = event.getComponent().getWidth();
+                if (width != movieViewportWidth) {
+                    movieViewportWidth = width;
+                    renderMovies();
+                }
             }
         });
         JPanel columns = new JPanel(new BorderLayout(12, 0)) {
@@ -593,7 +599,11 @@ public final class BasicClientUI extends JFrame {
         hero.movie(movie.title, movie.genre + " • " + movie.minutes + " phút", movie.poster,
                 () -> selectMovie(movie));
         hero.description(movie.description);
-        renderMovies();
+        // Keep the cards (and their focus/scroll position) while selecting a film.
+        for (Map.Entry<Integer, PosterView> entry : moviePosters.entrySet()) {
+            entry.getValue().putClientProperty("selected", entry.getKey() == movie.id);
+            entry.getValue().repaint();
+        }
         loadShows(movie.id);
     }
 
@@ -1170,6 +1180,7 @@ public final class BasicClientUI extends JFrame {
 
     private void renderMovies() {
         movieGrid.removeAll();
+        moviePosters.clear();
         String query = movieSearch.getText().trim().toLowerCase(Locale.ROOT);
         renderGenreFilters();
         List<MovieItem> matches = new ArrayList<>();
@@ -1182,16 +1193,27 @@ public final class BasicClientUI extends JFrame {
             }
         }
         movieCount.setText(matches.size() + " phim • Khám phá câu chuyện tiếp theo của bạn");
-        int width = movieGrid.getParent() == null ? 1080 : Math.max(600, movieGrid.getParent().getWidth() - 30);
-        int columns = Math.max(2, Math.min(4, width / 220));
+        int width = movieGrid.getParent() == null ? 0 : movieGrid.getParent().getWidth();
+        if (width <= 0) {
+            width = 1080;
+        }
+        Insets padding = movieGrid.getInsets();
+        int available = Math.max(1, width - padding.left - padding.right);
+        int gap = 12;
+        int columns = Math.max(1, Math.min(4, (available + gap) / 220));
+        int cardWidth = Math.max(1, (available - (columns - 1) * gap) / columns);
+        // Server posters are 244 x 340. Include the caption, gap and card border.
+        int cardHeight = (int) Math.round(cardWidth * 340.0 / 244) + 43 + 8 + 2;
         GridBagLayout gridLayout = (GridBagLayout) movieGrid.getLayout();
-        gridLayout.columnWidths = null;
+        gridLayout.columnWidths = new int[columns];
+        java.util.Arrays.fill(gridLayout.columnWidths, cardWidth);
         gridLayout.columnWeights = new double[columns];
         java.util.Arrays.fill(gridLayout.columnWeights, 1);
         if (matches.isEmpty()) {
             GridBagConstraints c = new GridBagConstraints();
             c.weightx = 1;
             c.weighty = 1;
+            c.gridwidth = columns;
             c.fill = GridBagConstraints.BOTH;
             movieGrid.add(emptyState("Chưa tìm thấy phim", "Thử từ khóa khác hoặc tải lại danh sách."), c);
         } else {
@@ -1200,12 +1222,11 @@ public final class BasicClientUI extends JFrame {
                 c.gridx = i % columns;
                 c.gridy = i / columns;
                 c.weightx = 1.0 / columns;
-                c.fill = GridBagConstraints.BOTH;
+                c.fill = GridBagConstraints.HORIZONTAL;
                 c.anchor = GridBagConstraints.NORTHWEST;
-                c.insets = new Insets(0, 0, 14, 12);
+                c.insets = new Insets(0, 0, 14, c.gridx < columns - 1 ? gap : 0);
                 JPanel card = movieCard(matches.get(i));
-                int cardHeight = Math.max(280, Math.min(360, (width / columns - 14) * 4 / 3 + 48));
-                card.setPreferredSize(new Dimension(width / columns - 14, cardHeight));
+                card.setPreferredSize(new Dimension(cardWidth, cardHeight));
                 card.setMinimumSize(new Dimension(0, cardHeight));
                 movieGrid.add(card, c);
             }
@@ -1216,7 +1237,8 @@ public final class BasicClientUI extends JFrame {
             space.weighty = 1;
             movieGrid.add(Box.createGlue(), space);
         }
-        movieGrid.setPreferredSize(new Dimension(width, Math.max(1, (matches.size() + columns - 1) / columns) * Math.max(294, Math.min(374, (width / columns - 14) * 4 / 3 + 62)) + 14));
+        // Let GridBagLayout include every row and inset in the scrollable height.
+        movieGrid.setPreferredSize(null);
         movieGrid.revalidate();
         movieGrid.repaint();
     }
@@ -1272,6 +1294,7 @@ public final class BasicClientUI extends JFrame {
         card.setOpaque(false);
         card.setBorder(new EmptyBorder(0, 0, 2, 0));
         PosterView poster = new PosterView(movie.poster, movie.title);
+        moviePosters.put(movie.id, poster);
         boolean selected = activeMovie != null && activeMovie.id == movie.id;
         poster.putClientProperty("selected", selected);
         JButton select = new JButton();
@@ -1493,11 +1516,12 @@ public final class BasicClientUI extends JFrame {
             return;
         }
         String items = foodOrder.items();
-        String summary = "Ghế: " + String.join(", ", codes) + "\n" + foodOrder.summary()
-                + "\nTổng dự kiến: " + totalPrice.getText()
-                + "\n\nGiữ ghế trong 10 phút và tạo mã thanh toán?";
-        if (JOptionPane.showConfirmDialog(this, summary, "Xác nhận đơn",
-                JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        int row = showTable.convertRowIndexToModel(showTable.getSelectedRow());
+        if (!BookingConfirmDialog.show(this,
+                showModel.getValueAt(row, 1).toString(),
+                showModel.getValueAt(row, 2).toString(),
+                showModel.getValueAt(row, 3).toString(), codes, foodOrder.summary(),
+                ticketSubtotal.getText(), foodSubtotal.getText(), totalPrice.getText())) {
             return;
         }
         send("CREATE_ORDER;" + showId + ";" + enc(String.join(",", codes)) + ";" + enc(items), response -> {
@@ -2451,6 +2475,7 @@ public final class BasicClientUI extends JFrame {
         hero.description("Khám phá câu chuyện tiếp theo của bạn.");
         showPrices.clear();
         movieGrid.removeAll();
+        moviePosters.clear();
         showTable.clearSelection();
         showModel.setRowCount(0);
         updatingShowPicker = true;
