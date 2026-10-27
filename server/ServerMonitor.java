@@ -13,6 +13,7 @@ import protocol.Protocol;
 public final class ServerMonitor {
 
     private static final Set<String> COMMANDS = new HashSet<>(Arrays.asList(
+            "JOIN_CHAT", "LEAVE_CHAT", "GET_CHAT_HISTORY", "SEND_CHAT", "CHAT_TYPING",
             "REGISTER", "LOGIN", "LOGOUT", "REQUEST_PASSWORD_RESET", "RESET_PASSWORD", "GET_NOTIFICATIONS", "MARK_NOTIFICATIONS_READ", "GET_MOVIES", "GET_SHOWS", "WATCH_SHOW", "GET_SEAT_MAP",
             "BOOK_TICKET", "GET_BOOKINGS", "GET_TICKET", "GET_E_TICKET", "INSPECT_TICKET", "CHECK_IN",
             "GET_PRODUCTS", "CREATE_ORDER", "GET_PAYMENT", "DEMO_CONFIRM_PAYMENT", "GET_PROFILE", "UPDATE_PROFILE",

@@ -49,6 +49,8 @@ public final class BasicServer {
     private final PaymentService payments = new PaymentService();
     private final service.NotificationService notifications = new service.NotificationService();
     private final service.PasswordResetService passwordResets;
+    private final service.ChatService chat;
+    private final java.util.Map<Integer, String> chatStates = new java.util.HashMap<>();
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
 
     public BasicServer() {
@@ -56,7 +58,12 @@ public final class BasicServer {
     }
 
     public BasicServer(service.PasswordResetService passwordResets) {
+        this(passwordResets, new service.ChatService());
+    }
+
+    public BasicServer(service.PasswordResetService passwordResets, service.ChatService chat) {
         this.passwordResets = java.util.Objects.requireNonNull(passwordResets);
+        this.chat = java.util.Objects.requireNonNull(chat);
     }
 
     public static void main(String[] args) {
@@ -67,10 +74,11 @@ public final class BasicServer {
             app.tickets.verifyReady();
             app.payments.verifyReady();
             app.notifications.verifyReady();
+            app.chat.verifyReady();
             app.serve();
         } catch (SQLException ex) {
             System.err.println("MySQL chưa sẵn sàng. Hãy chạy database/schema.sql "
-                    + "(database cũ: chạy thêm database/migrate_v2.sql và database/migrate_notifications_v4.sql) và kiểm tra MOVIE_DB_*.");
+                    + "(database cũ: chạy các migration, gồm database/migrate_chat_v5.sql) và kiểm tra MOVIE_DB_*.");
             System.err.println(ex.getMessage());
             System.exit(1);
         } catch (IOException ex) {
@@ -84,12 +92,13 @@ public final class BasicServer {
 
     private void serve() throws IOException {
         ExecutorService pool = Executors.newCachedThreadPool();
-        java.util.concurrent.ScheduledExecutorService paymentPoller = Executors.newSingleThreadScheduledExecutor(r -> {
+        java.util.concurrent.ScheduledExecutorService paymentPoller = Executors.newScheduledThreadPool(2, r -> {
             Thread t = new Thread(r, "payment-poller");
             t.setDaemon(true);
             return t;
         });
         paymentPoller.scheduleWithFixedDelay(this::synchronizePayments, 2, 4, java.util.concurrent.TimeUnit.SECONDS);
+        paymentPoller.scheduleWithFixedDelay(this::refreshChatRooms, 1, 2, java.util.concurrent.TimeUnit.SECONDS);
         try (ServerSocket listener = new ServerSocket(PORT)) {
             System.out.println("Galaxy Cinema Server đã sẵn sàng tại cổng " + PORT);
             while (true) {
@@ -126,8 +135,10 @@ public final class BasicServer {
                 List<String> response = process(request, session);
                 long elapsed = System.nanoTime() - started;
                 monitor.identity(session.monitorId, session.user, session.watchedShowId);
-                monitor.completed(session.monitorId, request, response, elapsed);
-                session.send(response);
+                monitor.completed(session.monitorId, request, response == null ? one("OK;CHAT") : response, elapsed);
+                if (response != null) {
+                    session.send(response);
+                }
             }
         } catch (IOException ex) {
             if (session != null) {
@@ -149,11 +160,177 @@ public final class BasicServer {
         }
     }
 
+    /**
+     * Queue snapshot + events dưới cùng khóa để lịch sử không ghi đè sự kiện
+     * mới.
+     */
+    private List<String> processChat(String command, String[] p, Session session) throws SQLException {
+        signedIn(session);
+        synchronized (chat) {
+            if ("LEAVE_CHAT".equals(command)) {
+                count(p, 1);
+                leaveChat(session);
+                session.send(one("OK;CHAT_LEFT"));
+                return null;
+            }
+            if ("JOIN_CHAT".equals(command)) {
+                count(p, 2);
+                int showId = number(p[1]);
+                String[] room = chat.room(showId);
+                List<String> history = chat.history(showId, 0);
+                boolean changed = session.chatShowId != showId;
+                if (changed) {
+                    leaveChat(session);
+                }
+                session.chatShowId = showId;
+                if (changed) {
+                    session.lastChatNanos = 0;
+                }
+                List<String> frame = new ArrayList<>();
+                frame.add("OK;CHAT");
+                frame.add(service.ChatService.row("CHAT_ROOM", room));
+                frame.addAll(history);
+                frame.addAll(chatMembers(showId));
+                session.send(frame);
+                if (changed) {
+                    publishMembers(showId, session.user.getHoTen() + " đã tham gia phòng");
+                }
+                return null;
+            }
+            count(p, 3);
+            int showId = number(p[1]);
+            if (showId < 1 || session.chatShowId != showId) {
+                throw new IllegalArgumentException("Bạn chưa tham gia phòng chat này");
+            }
+            if ("GET_CHAT_HISTORY".equals(command)) {
+                List<String> frame = new ArrayList<>();
+                frame.add("OK;CHAT_HISTORY");
+                frame.addAll(chat.history(showId, longNumber(p[2])));
+                session.send(frame);
+                return null;
+            }
+            long now = System.nanoTime();
+            if ("CHAT_TYPING".equals(command)) {
+                if (!"1".equals(p[2])) {
+                    throw new IllegalArgumentException("Trạng thái nhập không hợp lệ");
+                }
+                if (!"1".equals(chat.room(showId)[5])) {
+                    throw new IllegalArgumentException("Suất chiếu đã kết thúc. Phòng chat đã đóng.");
+                }
+                session.send(one("OK;CHAT_TYPING"));
+                if (session.lastTypingNanos == 0 || now - session.lastTypingNanos > 1_000_000_000L) {
+                    session.lastTypingNanos = now;
+                    String event = "EVENT;CHAT_TYPING;" + showId + ";" + enc(Integer.toString(session.user.getId()))
+                            + ";" + enc(session.user.getHoTen());
+                    for (Session viewer : sessions) {
+                        if (viewer.chatShowId == showId && viewer != session) {
+                            viewer.send(one(event));
+                        }
+                    }
+                }
+                return null;
+            }
+            if (session.lastChatNanos != 0 && now - session.lastChatNanos < 500_000_000L) {
+                throw new IllegalArgumentException("Bạn gửi quá nhanh. Hãy chờ một chút.");
+            }
+            if (p[2].length() > 4000) {
+                throw new IllegalArgumentException("Tin nhắn quá dài");
+            }
+            String[] message = chat.send(showId, session.user.getId(), dec(p[2]));
+            session.lastChatNanos = now;
+            session.send(one("OK;CHAT_SENT;" + message[0]));
+            List<String> event = Arrays.asList("EVENT;CHAT_MESSAGE;" + showId, service.ChatService.row("CHAT_MSG", message));
+            for (Session viewer : sessions) {
+                if (viewer.chatShowId == showId) {
+                    viewer.send(event);
+                }
+            }
+            return null;
+        }
+    }
+
+    private List<String> chatMembers(int showId) {
+        java.util.Map<Integer, String> members = new java.util.TreeMap<>();
+        for (Session viewer : sessions) {
+            NguoiDung user = viewer.user;
+            if (!viewer.closed.get() && viewer.chatShowId == showId && user != null) {
+                members.put(user.getId(), user.getHoTen());
+            }
+        }
+        List<String> result = new ArrayList<>();
+        members.forEach((id, name) -> result.add(service.ChatService.row("CHAT_MEMBER", Integer.toString(id), name)));
+        return result;
+    }
+
+    private void publishMembers(int showId, String notice) {
+        List<String> event = new ArrayList<>();
+        event.add("EVENT;CHAT_MEMBERS;" + showId);
+        event.addAll(chatMembers(showId));
+        if (notice != null) {
+            event.add(service.ChatService.row("CHAT_NOTICE", notice));
+        }
+        for (Session viewer : sessions) {
+            if (viewer.chatShowId == showId) {
+                viewer.send(event);
+            }
+        }
+    }
+
+    private void leaveChat(Session session) {
+        synchronized (chat) {
+            int old = session.chatShowId;
+            session.chatShowId = 0;
+            if (old > 0) {
+                publishMembers(old, session.user == null ? null : session.user.getHoTen() + " đã rời phòng");
+            }
+        }
+    }
+
+    private void refreshChatRooms() {
+        synchronized (chat) {
+            java.util.Set<Integer> active = new java.util.HashSet<>();
+            for (Session viewer : sessions) {
+                if (viewer.chatShowId > 0) {
+                    active.add(viewer.chatShowId);
+                }
+            }
+            chatStates.keySet().retainAll(active);
+            for (int showId : active) {
+                try {
+                    String[] room = chat.room(showId);
+                    String state = String.join(";", Arrays.copyOf(room, 6));
+                    if (!state.equals(chatStates.put(showId, state))) {
+                        List<String> event = Arrays.asList("EVENT;CHAT_STATE;" + showId, service.ChatService.row("CHAT_ROOM", room));
+                        for (Session viewer : sessions) {
+                            if (viewer.chatShowId == showId) {
+                                viewer.send(event);
+                            }
+                        }
+                    }
+                } catch (IllegalArgumentException ex) {
+                    for (Session viewer : sessions) {
+                        if (viewer.chatShowId == showId) {
+                            viewer.send(one("EVENT;CHAT_CLOSED;" + showId));
+                        }
+                    }
+                } catch (SQLException ex) {
+                    System.err.println("Không cập nhật được trạng thái phòng chat");
+                }
+            }
+        }
+    }
+
     private List<String> process(String request, Session session) {
         String[] p = request.split(";", -1);
         String command = p[0].trim().toUpperCase(Locale.ROOT);
         try {
             switch (command) {
+                case "JOIN_CHAT":
+                case "LEAVE_CHAT":
+                case "GET_CHAT_HISTORY":
+                case "SEND_CHAT":
+                case "CHAT_TYPING":
+                    return processChat(command, p, session);
                 case "REQUEST_PASSWORD_RESET":
                     count(p, 2);
                     passwordResets.request(dec(p[1]), session.socket.getInetAddress().getHostAddress());
@@ -165,6 +342,7 @@ public final class BasicServer {
                     for (Session active : sessions) {
                         NguoiDung loggedIn = active.user;
                         if (loggedIn != null && loggedIn.getId() == resetUserId) {
+                            leaveChat(active);
                             active.user = null;
                             active.watchedShowId = 0;
                             if (active != session) {
@@ -183,12 +361,14 @@ public final class BasicServer {
                     if (user == null) {
                         return error("Sai tài khoản hoặc mật khẩu");
                     }
+                    leaveChat(session);
                     session.watchedShowId = 0;
                     session.user = user;
                     return one("OK;LOGIN;" + user.getId() + ";" + enc(user.getHoTen())
                             + ";" + enc(user.getGmail()) + ";" + enc(user.getVaiTro()));
                 case "LOGOUT":
                     count(p, 1);
+                    leaveChat(session);
                     session.watchedShowId = 0;
                     session.user = null;
                     return one("OK;LOGOUT");
@@ -527,6 +707,8 @@ public final class BasicServer {
         private volatile NguoiDung user;
         private final long monitorId;
         private volatile int watchedShowId;
+        private volatile int chatShowId;
+        private long lastChatNanos, lastTypingNanos;
         private final Socket socket;
         private final BufferedWriter output;
         private final BlockingQueue<List<String>> outgoing = new ArrayBlockingQueue<>(64);
@@ -577,6 +759,7 @@ public final class BasicServer {
         @Override
         public void close() {
             if (closed.compareAndSet(false, true)) {
+                leaveChat(this);
                 monitor.disconnected(monitorId);
                 watchedShowId = 0;
                 outgoing.clear();

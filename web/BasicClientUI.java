@@ -167,6 +167,9 @@ public final class BasicClientUI extends JFrame {
     private String pendingElectronicTicket;
 
     private volatile MovieClient client;
+    private int currentUserId;
+    private javax.swing.JTabbedPane bookingChatTabs;
+    private ShowChatPanel chatPanel;
     // Các trường trạng thái ghế chỉ được truy cập trên Swing EDT.
     private int seatMapShowId;
     private int pendingSeatRefreshShowId;
@@ -216,6 +219,9 @@ public final class BasicClientUI extends JFrame {
             @Override
             public void windowClosed(WindowEvent event) {
                 closeClient();
+                if (chatPanel != null) {
+                    chatPanel.shutdown();
+                }
             }
         });
     }
@@ -746,25 +752,90 @@ public final class BasicClientUI extends JFrame {
         seatCard.add(legend, BorderLayout.SOUTH);
 
         UiTheme.RoundedPanel summary = UiTheme.glass();
-        summary.setPreferredSize(new Dimension(320, 0));
+        summary.setMinimumSize(new Dimension(0, 0));
         summary.setLayout(new BorderLayout(0, 16));
         JPanel movie = new JPanel(new GridLayout(3, 1, 0, 6));
         movie.setOpaque(false);
         movie.add(label("Thông tin đặt vé", 19, Font.BOLD, UiTheme.TEXT));
         movie.add(bookingFilm);
         movie.add(bookingMeta);
-        summary.add(movie, BorderLayout.NORTH);
-        summary.add(foodOrder, BorderLayout.CENTER);
+        JPanel bookingContent = new JPanel(new BorderLayout(0, 14));
+        bookingContent.setOpaque(false);
+        bookingContent.add(movie, BorderLayout.NORTH);
+        bookingContent.add(foodOrder, BorderLayout.CENTER);
+        bookingChatTabs = new javax.swing.JTabbedPane();
+        bookingChatTabs.setOpaque(false);
+        bookingChatTabs.setUI(new javax.swing.plaf.basic.BasicTabbedPaneUI() {
+            @Override
+            protected void installDefaults() {
+                super.installDefaults();
+                tabInsets = new Insets(8, 14, 8, 14);
+                tabAreaInsets = new Insets(0, 0, 8, 0);
+                contentBorderInsets = new Insets(0, 0, 0, 0);
+                selectedTabPadInsets = new Insets(0, 0, 0, 0);
+            }
+
+            @Override
+            protected int calculateTabWidth(int placement, int index, java.awt.FontMetrics metrics) {
+                return Math.max(90, (tabPane.getWidth() - 12) / 2);
+            }
+
+            @Override
+            protected int calculateTabHeight(int placement, int index, int fontHeight) {
+                return 40;
+            }
+
+            @Override
+            protected void paintTabBackground(Graphics g, int placement, int index, int x, int y, int w, int h, boolean selected) {
+            }
+
+            @Override
+            protected void paintTabBorder(Graphics g, int placement, int index, int x, int y, int w, int h, boolean selected) {
+                g.setColor(selected ? UiTheme.PRIMARY : UiTheme.LINE);
+                g.fillRect(x + 8, y + h - (selected ? 3 : 1), w - 16, selected ? 3 : 1);
+            }
+
+            @Override
+            protected void paintContentBorder(Graphics g, int placement, int selectedIndex) {
+            }
+
+            @Override
+            protected void paintFocusIndicator(Graphics g, int placement, Rectangle[] rects, int index, Rectangle icon, Rectangle text, boolean selected) {
+            }
+
+            @Override
+            protected void paintText(Graphics g, int placement, Font font, java.awt.FontMetrics metrics, int index, String title, Rectangle rect, boolean selected) {
+                g.setFont(font);
+                g.setColor(selected ? UiTheme.PRIMARY : UiTheme.MUTED);
+                g.drawString(title, rect.x, rect.y + metrics.getAscent());
+            }
+        });
+        bookingChatTabs.setFont(UiTheme.font(15, Font.BOLD));
+        bookingChatTabs.addTab("Đặt vé", bookingContent);
+        chatPanel = new ShowChatPanel(() -> client, () -> currentUserId,
+                () -> "SHOWS".equals(activePage) && bookingChatTabs.getSelectedIndex() == 1 && isActive(),
+                unread -> {
+                    if (bookingChatTabs.getTabCount() > 1) {
+                        bookingChatTabs.setTitleAt(1, unread == 0 ? "Trò chuyện" : "Trò chuyện (" + unread + ")");
+                    }
+                });
+        bookingChatTabs.addTab("Trò chuyện", chatPanel);
+        summary.add(bookingChatTabs, BorderLayout.CENTER);
         JPanel bill = new JPanel();
         bill.setOpaque(false);
         bill.setLayout(new BoxLayout(bill, BoxLayout.Y_AXIS));
         selectedSeats.setForeground(UiTheme.PRIMARY);
         selectedSeats.setFont(UiTheme.font(14, Font.BOLD));
         bill.add(selectedSeats);
-        bill.add(Box.createVerticalStrut(12));
-        bill.add(billRow("Tiền vé", ticketSubtotal));
-        bill.add(Box.createVerticalStrut(6));
-        bill.add(billRow("Bắp nước", foodSubtotal));
+        JPanel breakdown = new JPanel();
+        breakdown.setOpaque(false);
+        breakdown.setAlignmentX(Component.LEFT_ALIGNMENT);
+        breakdown.setLayout(new BoxLayout(breakdown, BoxLayout.Y_AXIS));
+        breakdown.add(Box.createVerticalStrut(12));
+        breakdown.add(billRow("Tiền vé", ticketSubtotal));
+        breakdown.add(Box.createVerticalStrut(6));
+        breakdown.add(billRow("Bắp nước", foodSubtotal));
+        bill.add(breakdown);
         bill.add(Box.createVerticalStrut(12));
         bill.add(billRow("Tổng thanh toán", totalPrice));
         bill.add(Box.createVerticalStrut(16));
@@ -772,11 +843,32 @@ public final class BasicClientUI extends JFrame {
         pay.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
         pay.setAlignmentX(Component.LEFT_ALIGNMENT);
         bill.add(pay);
-        summary.add(bill, BorderLayout.SOUTH);
-        JPanel columns = new JPanel(new BorderLayout(18, 0));
+        bookingContent.add(bill, BorderLayout.SOUTH);
+        JPanel columns = new JPanel(null) {
+            @Override
+            public void doLayout() {
+                int available = Math.max(0, getWidth() - 18);
+                int left = (int) Math.round(available * .58);
+                seatCard.setBounds(0, 0, left, getHeight());
+                summary.setBounds(left + 18, 0, available - left, getHeight());
+            }
+        };
         columns.setOpaque(false);
-        columns.add(seatCard, BorderLayout.CENTER);
-        columns.add(summary, BorderLayout.EAST);
+        columns.add(seatCard);
+        columns.add(summary);
+        bookingChatTabs.addChangeListener(e -> {
+            if (bookingChatTabs.getSelectedIndex() == 1) {
+                chatPanel.markRead();
+            }
+        });
+        addWindowFocusListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowGainedFocus(java.awt.event.WindowEvent e) {
+                if ("SHOWS".equals(activePage) && bookingChatTabs.getSelectedIndex() == 1) {
+                    chatPanel.markRead();
+                }
+            }
+        });
         page.add(columns, BorderLayout.CENTER);
         return page;
     }
@@ -955,6 +1047,11 @@ public final class BasicClientUI extends JFrame {
         activePage = page;
         if (!"SHOWS".equals(page)) {
             pendingSeatRefreshShowId = 0;
+            if (chatPanel != null) {
+                chatPanel.leaveRoom();
+            }
+        } else if (chatPanel != null && selectedShowId() > 0) {
+            chatPanel.setRoom(selectedShowId());
         }
         pageLayout.show(pages, page);
         for (Map.Entry<String, NavButton> entry : navigation.entrySet()) {
@@ -1051,6 +1148,7 @@ public final class BasicClientUI extends JFrame {
                 return;
             }
             userLabel.setText("Chào " + dec(data[3]));
+            currentUserId = Integer.parseInt(data[2]);
             userLabel.setToolTipText(dec(data[3]));
             admin = "admin".equals(dec(data[5]));
             staff = admin || "staff".equals(dec(data[5]));
@@ -1390,6 +1488,9 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void clearSeats() {
+        if (chatPanel != null) {
+            chatPanel.leaveRoom();
+        }
         seatMapShowId = 0;
         pendingSeatRefreshShowId = 0;
         seatButtons.clear();
@@ -1413,6 +1514,9 @@ public final class BasicClientUI extends JFrame {
         }
         if (seatMapShowId != showId) {
             clearSeats();
+        }
+        if (chatPanel != null && "SHOWS".equals(activePage)) {
+            chatPanel.setRoom(showId);
         }
         // Nếu đang có request, giữ lại yêu cầu mới nhất thay vì bỏ qua thao tác chọn suất.
         pendingSeatRefreshShowId = showId;
@@ -2379,6 +2483,11 @@ public final class BasicClientUI extends JFrame {
                 handlePendingDisconnect();
             }
         }));
+        connected.setChatEventListener(event -> SwingUtilities.invokeLater(() -> {
+            if (client == connected && chatPanel != null) {
+                chatPanel.event(event);
+            }
+        }));
         return connected;
     }
 
@@ -2419,6 +2528,10 @@ public final class BasicClientUI extends JFrame {
 
     private void resetSession() {
         loggedIn = false;
+        currentUserId = 0;
+        if (chatPanel != null) {
+            chatPanel.reset();
+        }
         adminViewRevision++;
         adminRefreshPending = false;
         adminStatsPending = false;
@@ -2487,6 +2600,9 @@ public final class BasicClientUI extends JFrame {
     }
 
     private void closeClient() {
+        if (chatPanel != null) {
+            chatPanel.reset();
+        }
         notificationTimer.stop();
         if (heroTimer != null) {
             heroTimer.stop();

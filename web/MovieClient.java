@@ -44,6 +44,8 @@ public final class MovieClient implements AutoCloseable {
     };
     private volatile Consumer<IOException> disconnectListener = error -> {
     };
+    private volatile Consumer<List<String>> chatEventListener = event -> {
+    };
 
     public MovieClient() throws IOException {
         this(DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT_MS);
@@ -83,6 +85,10 @@ public final class MovieClient implements AutoCloseable {
 
     public void setDisconnectListener(Consumer<IOException> listener) {
         disconnectListener = Objects.requireNonNull(listener, "listener");
+    }
+
+    public void setChatEventListener(Consumer<List<String>> listener) {
+        chatEventListener = Objects.requireNonNull(listener, "listener");
     }
 
     public List<String> request(String command) throws IOException {
@@ -153,6 +159,18 @@ public final class MovieClient implements AutoCloseable {
     private void dispatch(List<String> frame) throws IOException {
         if (!frame.isEmpty() && frame.get(0).startsWith("EVENT;")) {
             String[] fields = frame.get(0).split(";", -1);
+            if (fields.length >= 3 && java.util.Arrays.asList("CHAT_MESSAGE", "CHAT_MEMBERS",
+                    "CHAT_STATE", "CHAT_CLOSED", "CHAT_TYPING").contains(fields[1])) {
+                if (Integer.parseInt(fields[2]) < 1 || fields.length != ("CHAT_TYPING".equals(fields[1]) ? 5 : 3)) {
+                    throw new IOException("Sự kiện chat không hợp lệ");
+                }
+                try {
+                    chatEventListener.accept(Collections.unmodifiableList(new ArrayList<>(frame)));
+                } catch (RuntimeException ex) {
+                    System.err.println("Lỗi callback chat: " + ex.getMessage());
+                }
+                return;
+            }
             if (frame.size() != 1 || fields.length != 3
                     || !"SEATS_CHANGED".equals(fields[1])) {
                 throw new IOException("Sự kiện máy chủ không hợp lệ");

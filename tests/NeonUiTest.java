@@ -196,8 +196,9 @@ public final class NeonUiTest {
                 JOptionPane p = findOptionPane((Container) c);
                 if (p != null) {
                     return p;
-            
-                }}
+
+                }
+            }
         }
         return null;
     }
@@ -254,8 +255,9 @@ public final class NeonUiTest {
                 JTabbedPane p = findTabs((Container) c);
                 if (p != null) {
                     return p;
-            
-                }}
+
+                }
+            }
         }
         return null;
     }
@@ -269,8 +271,9 @@ public final class NeonUiTest {
                 JButton b = findButton((Container) c, text);
                 if (b != null) {
                     return b;
-            
-                }}
+
+                }
+            }
         }
         return null;
     }
@@ -308,8 +311,9 @@ public final class NeonUiTest {
         while (System.nanoTime() < end) {
             if (edt(ready)) {
                 return;
-            
-            }Thread.sleep(20);
+
+            }
+            Thread.sleep(20);
         }
         throw new AssertionError("Timed out: " + label);
     }
@@ -317,8 +321,9 @@ public final class NeonUiTest {
     private static void check(boolean condition, String text) {
         if (!condition) {
             throw new AssertionError(text);
-    
-        }}
+
+        }
+    }
 
     private static void capture(Container panel, String name, int w, int h) throws Exception {
         panel.setSize(w, h);
@@ -382,8 +387,9 @@ public final class NeonUiTest {
                 } catch (SocketException ex) {
                     if (!listener.isClosed()) {
                         throw ex;
-                
-                    }}
+
+                    }
+                }
                 return null;
             });
             Thread thread = new Thread(task);
@@ -392,6 +398,20 @@ public final class NeonUiTest {
         }
 
         List<String> response(String command) {
+            if (command.startsWith("JOIN_CHAT;")) {
+                String showId = command.split(";")[1];
+                return Arrays.asList("OK;CHAT", row("CHAT_ROOM", showId, "Hành trình ánh sao", "Phòng 2",
+                        "2030-10-26T19:30", "2030-10-26T21:30", "1", LocalDateTime.now().toString()), "MORE;0");
+            }
+            if (command.equals("LEAVE_CHAT")) {
+                return Arrays.asList("OK;CHAT_LEFT");
+            }
+            if (command.startsWith("CHAT_TYPING;")) {
+                return Arrays.asList("OK;CHAT_TYPING");
+            }
+            if (command.startsWith("GET_CHAT_HISTORY;")) {
+                return Arrays.asList("OK;CHAT_HISTORY", "MORE;0");
+            }
             if ("GET_MOVIES".equals(command)) {
                 List<String> rows = new ArrayList<>();
                 rows.add("OK;MOVIES;4");
@@ -466,8 +486,9 @@ public final class NeonUiTest {
             listener.close();
             if (socket != null) {
                 socket.close();
-            
-            }task.get(4, TimeUnit.SECONDS);
+
+            }
+            task.get(4, TimeUnit.SECONDS);
         }
     }
 }
