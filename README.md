@@ -188,7 +188,9 @@ java -cp 'out;lib/*' web.BasicClientUI
 1. Khởi động Server và mở hai Client; đăng nhập bằng hai tài khoản khác nhau.
 2. Chọn ghế, thêm bắp/nước và tạo thanh toán. Client khác thấy ghế chuyển sang đang giữ ngay lập tức.
 3. Ở chế độ demo bấm **Giả lập đã thanh toán**; ở chế độ payOS quét QR bằng ứng dụng ngân hàng. Khi Server xác nhận giao dịch, vé QR xuất hiện và mọi Client được cập nhật.
-4. Đăng nhập tài khoản admin để xem danh sách đơn, thống kê và báo cáo doanh thu theo phim.
+4. Khách dùng **điện thoại (Camera / Zalo)** quét mã QR trên vé để mở giao diện vé điện tử di động cực đẹp (hỗ trợ cả Wi-Fi nội bộ lẫn 4G/5G qua Ngrok).
+5. Đăng nhập tài khoản admin/staff để soát vé bằng cách nhập mã hoặc đọc ảnh QR, xác nhận khách vào rạp.
+6. Xem danh sách đơn, thống kê và báo cáo doanh thu theo phim trong màn hình quản trị.
 
 ## Ảnh giao diện và poster phim
 

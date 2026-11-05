@@ -99,6 +99,8 @@ public final class BasicServer {
         });
         paymentPoller.scheduleWithFixedDelay(this::synchronizePayments, 2, 4, java.util.concurrent.TimeUnit.SECONDS);
         paymentPoller.scheduleWithFixedDelay(this::refreshChatRooms, 1, 2, java.util.concurrent.TimeUnit.SECONDS);
+        TicketHttpServer httpServer = new TicketHttpServer(tickets);
+        httpServer.start();
         try (ServerSocket listener = new ServerSocket(PORT)) {
             System.out.println("Galaxy Cinema Server đã sẵn sàng tại cổng " + PORT);
             while (true) {
@@ -106,6 +108,7 @@ public final class BasicServer {
                 pool.execute(() -> handleClient(socket));
             }
         } finally {
+            httpServer.stop();
             passwordResets.close();
             paymentPoller.shutdownNow();
             pool.shutdown();
