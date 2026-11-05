@@ -2,299 +2,409 @@
 
 **Mỗi suất chiếu, một trải nghiệm mới.**
 
-Galaxy Cinema là ứng dụng **đặt vé xem phim trên máy tính** cho môn Lập trình mạng. Giao diện được viết bằng Java Swing; Client trao đổi với Server qua TCP Socket, còn Server xử lý nghiệp vụ và truy cập MySQL bằng JDBC. Client không kết nối trực tiếp đến database.
+Galaxy Cinema là ứng dụng **đặt vé xem phim trên máy tính** phục vụ môn học Lập trình mạng (LTM). Ứng dụng được thiết kế theo kiến trúc Client - Server đa tầng với giao diện đồ họa **Java Swing Cyberpunk / Neon Dark Mode** hiện đại. 
 
-Tên repository `LTM_Movie_Tickets` và database `movie_tickets_ltm` được giữ để tương thích với dự án hiện tại; tên hiển thị trong ứng dụng là **Galaxy Cinema**.
+Toàn bộ quá trình trao đổi dữ liệu giữa Client và Server diễn ra thông qua **TCP Socket tùy biến** (giao thức dòng lệnh mã hóa Base64 URL-safe). Server đóng vai trò trung tâm xử lý nghiệp vụ, giao dịch thanh toán, quản lý kết nối đồng thời và truy vấn cơ sở dữ liệu **MySQL bằng JDBC**. Client hoàn toàn không kết nối trực tiếp đến database để đảm bảo tính an toàn dữ liệu. Ngoài ra, Server còn tích hợp một **HTTP Web Server** phục vụ khách hàng quét mã QR xem vé điện tử trực tiếp trên trình duyệt điện thoại di động.
 
-## Chức năng hiện có
+---
 
-**Người dùng**
+## Mục lục
 
-- Đăng ký, đăng nhập bằng email hoặc số điện thoại và đăng xuất.
-- Xem danh sách phim, mô tả, poster và các suất chiếu.
-- Xem sơ đồ ghế còn trống hoặc đã được đặt; chọn tối đa 10 ghế trong một lần đặt.
-- Chọn ghế, mua thêm đồ ăn/nước uống và thanh toán bằng QR đúng tổng tiền vé + sản phẩm.
-- Ghế được giữ tối đa 10 phút trong lúc thanh toán; chỉ phát hành vé sau khi giao dịch thành công.
-- Đặt vé, xem danh sách/chi tiết đơn của mình và hủy đơn demo. Đơn đã thanh toán thật cần hoàn tiền trước khi hủy.
-- Xem vé QR ngay sau khi đặt hoặc từ **Vé của tôi → Vé QR**; lưu QR thành ảnh PNG.
-- Sơ đồ ghế hiển thị đúng hàng/số ghế, có màn chiếu và khoảng lối đi giữa.
-- Ghế tự cập nhật khi client khác đặt/hủy, giữ các lựa chọn vẫn còn trống.
-- Mở menu tài khoản ở biểu tượng cạnh lời chào để xem/cập nhật họ tên, email, số điện thoại và mật khẩu.
+- [Tính năng hệ thống](#tính-năng-hệ-thống)
+- [Kiến trúc và Luồng xử lý](#kiến-trúc-và-luồng-xử-lý)
+- [Yêu cầu môi trường](#yêu-cầu-môi-trường)
+- [Hướng dẫn cài đặt và khởi chạy](#hướng-dẫn-cài-đặt-và-khởi-chạy)
+  - [1. Khởi tạo Cơ sở dữ liệu](#1-khởi-tạo-cơ-sở-dữ-liệu)
+  - [2. Cấu hình file `.env`](#2-cấu-hình-file-env)
+  - [3. Biên dịch mã nguồn](#3-biên-dịch-mã-nguồn)
+  - [4. Khởi động Server](#4-khởi-động-server)
+  - [5. Khởi động Client](#5-khởi-động-client)
+  - [6. Cấp quyền Quản trị viên (Admin) và Nhân viên (Staff)](#6-cấp-quyền-quản-trị-viên-admin-và-nhân-viên-staff)
+- [Kết nối Client trong mạng LAN](#kết-nối-client-trong-mạng-lan)
+- [Thanh toán trực tuyến (Demo & PayOS)](#thanh-toán-trực-tuyến-demo--payos)
+- [Quét QR xem vé trên Điện thoại di động](#quét-qr-xem-vé-trên-điện-thoại-di-động)
+- [Khôi phục mật khẩu qua Email (Gmail SMTP)](#khôi-phục-mật-khẩu-qua-email-gmail-smtp)
+- [Cấu trúc thư mục dự án](#cấu-trúc-thư-mục-dự-án)
+- [Kiểm thử tự động (Testing)](#kiểm-thử-tự-động-testing)
+- [Xử lý sự cố thường gặp (Troubleshooting)](#xử-lý-sự-cố-thường-gặp-troubleshooting)
 
-**Nhân viên soát vé (staff) và quản trị viên**
+---
 
-- Nhập mã vé hoặc đọc ảnh QR PNG/JPG, xem thông tin và xác nhận khách vào rạp.
-- Một QR áp dụng cho toàn bộ ghế trong một đơn. Vé hủy/đã dùng bị từ chối.
-- Hai máy soát cùng mã chỉ có một máy thành công. Đơn đã soát không được hủy.
+## Tính năng hệ thống
 
-**Quản trị viên**
+### 1. Dành cho Khách hàng (User)
+- **Tài khoản & Hồ sơ**:
+  - Đăng ký tài khoản, đăng nhập bằng Email hoặc Số điện thoại.
+  - Quên mật khẩu: Nhận mã xác thực OTP 6 số gửi tự động về Gmail cá nhân qua giao thức SMTP an toàn.
+  - Xem và cập nhật thông tin cá nhân (Họ tên, SĐT, Email), đổi mật khẩu.
+- **Trải nghiệm phim & Đặt vé**:
+  - Xem danh sách phim đang chiếu, poster, thể loại, thời lượng, mô tả và lịch chiếu theo ngày.
+  - Sơ đồ ghế trực quan: Hiển thị đúng mã hàng (A, B, C...) và số cột, hiển thị lối đi giữa và màn chiếu cong.
+  - Chọn tối đa 10 ghế trong một lượt đặt.
+  - **Giữ ghế thời gian thực**: Ghế được giữ tạm thời (tối đa 10 phút) ngay khi bấm tạo đơn thanh toán. Đồng bộ tức thời tới các máy khác xem cùng suất chiếu để tránh đặt trùng ghế.
+  - **Combo Bắp & Nước**: Chọn đồ ăn, nước uống với bảng tính tiền tự động ngay tại màn hình đặt vé.
+- **Thanh toán & Vé điện tử**:
+  - Hỗ trợ thanh toán Demo (giả lập) hoặc PayOS (quét mã VietQR chuyển khoản thật).
+  - Xuất vé điện tử dạng cuộn thẻ perforated neon đẹp mắt ngay sau khi thanh toán thành công.
+  - Lưu ảnh vé dưới dạng PNG hoặc in vé.
+  - **Xem vé trên điện thoại**: Quét mã QR trên vé bằng Zalo/Camera điện thoại để mở giao diện web vé điện tử trực tiếp trên di động.
+- **Tương tác & Tiện ích**:
+  - **Phòng chat trực tiếp (Showtime Live Chat)**: Nhắn tin trao đổi trong thời gian thực giữa các khán giả xem cùng một suất chiếu.
+  - **Trung tâm thông báo (Notification Center)**: Nhận thông báo hệ thống và cập nhật trạng thái đơn vé.
 
-- Thêm, xem, sửa và xóa phim; chọn poster JPG/PNG từ máy khi thêm hoặc sửa phim. Khi sửa phim, trường để trống được giữ nguyên.
-- Thêm, xem, sửa và xóa phòng chiếu; cấu hình ghế bằng số hàng × số ghế mỗi hàng.
-- Thêm, xem, sửa và xóa suất chiếu.
-- Xem người dùng, tất cả đơn vé, hủy đơn và xem thống kê.
-- Mở **Giám sát server** để xem kết nối, thời điểm kết nối, số yêu cầu, thời gian xử lý và nhật ký.
-  Màn hình tự làm mới mỗi 2 giây khi đang mở; chỉ admin có quyền truy cập.
-- Xem, thêm, sửa, bật lại hoặc ngừng bán đồ ăn và nước uống. Ngừng bán không xóa lịch sử của đơn cũ.
-- Xem báo cáo theo phim gồm số vé còn hiệu lực và doanh thu; các đơn/vé đã hủy không được tính vào báo cáo.
+### 2. Dành cho Nhân viên soát vé (Staff)
+- Giao diện **Soát vé** chuyên dụng:
+  - Nhập mã đặt vé (#ID) hoặc tải ảnh mã QR vé (PNG, JPG) từ máy tính.
+  - Kiểm tra trạng thái vé: Hợp lệ, đã dùng hay đã bị hủy.
+  - Xác nhận check-in cho khách vào phòng chiếu. Mỗi mã vé chỉ được soát thành công đúng 1 lần.
+  - Xử lý đồng thời: Ngăn chặn triệt để tình trạng hai nhân viên soát cùng một vé tại hai cửa rạp khác nhau.
 
-Thanh toán có hai chế độ: `demo` để phát triển không chuyển tiền và `payos` để nhận thanh toán thật vào tài khoản ngân hàng đã liên kết với kênh payOS. Server giữ khóa bí mật và tự kiểm tra giao dịch; Client không được tự xác nhận đã trả tiền.
+### 3. Dành cho Quản trị viên (Admin)
+- Đầy đủ quyền hạn của Nhân viên và Khách hàng.
+- **Quản lý danh mục**:
+  - Quản lý Phim: Thêm, sửa thông tin, xóa phim, tải ảnh poster JPG/PNG lên Server (tự động resize và lưu trữ).
+  - Quản lý Phòng chiếu & Ghế: Tùy biến số hàng × số cột cho từng phòng chiếu.
+  - Quản lý Suất chiếu: Thêm lịch chiếu mới, điều chỉnh giá vé, xóa suất chiếu.
+  - Quản lý Bắp nước: Thêm sản phẩm, sửa giá, ẩn/hiện đồ ăn nước uống.
+- **Quản lý & Thống kê**:
+  - Xem danh sách người dùng, phân quyền tài khoản.
+  - Xem toàn bộ danh sách đơn đặt vé, hủy đơn theo yêu cầu.
+  - Báo cáo doanh thu và số lượng vé bán theo từng phim (loại trừ các vé hủy/quá hạn).
+- **Giám sát Server thời gian thực (Server Monitor)**:
+  - Xem số lượng Client đang kết nối trực tiếp qua TCP.
+  - Giám sát thông lượng (Throughput), tổng số request, thời gian xử lý trung bình và tỷ lệ lỗi.
+  - Bảng nhật ký (Logs) hoạt động trực tiếp của Server, tự động cập nhật mỗi 2 giây.
 
-## Kiến trúc và luồng xử lý
+---
+
+## Kiến trúc và Luồng xử lý
 
 ```text
-Java Swing Client                     Java TCP Server                       MySQL
-web.BasicClientUI ──> web.MovieClient ──TCP :2040──> server.BasicServer
-                                                    └──> service.* ──> repository.*
-                                                                      └──> mysql.CSDL ──JDBC──> database
+┌─────────────────────────────────┐                    ┌─────────────────────────────────┐
+│     Client (Java Swing UI)      │                    │     Thiết bị di động (Mobile)   │
+│  - BasicClientUI / AuthScreen   │                    │  - Quét QR bằng Zalo / Camera   │
+└───────────────┬─────────────────┘                    └────────────────┬────────────────┘
+                │ TCP Socket (Port 2040)                                │ HTTP GET /ticket?token=...
+                ▼                                                       ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               Server (server.BasicServer)                              │
+│                                                                                        │
+│  ┌─────────────────────────────┐                    ┌───────────────────────────────┐  │
+│  │    TCP Request Dispatcher   │                    │     TicketHttpServer (8080)   │  │
+│  │ (ThreadPool, Session, Auth) │                    │   (Phục vụ trang web xem vé)  │  │
+│  └──────────────┬──────────────┘                    └───────────────┬───────────────┘  │
+│                 │                                                   │                  │
+│                 ▼                                                   ▼                  │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                 Service Layer                                    │  │
+│  │  - BasicService      - CinemaService     - PaymentService     - TicketService    │  │
+│  │  - ChatService       - NotificationService - SmtpResetMailer  - PosterStorage    │  │
+│  └──────────────────────────────────────────┬───────────────────────────────────────┘  │
+│                                             │                                          │
+│                                             ▼                                          │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                         Repository Layer & JDBC (CSDL)                           │  │
+│  │  - NguoiDungRepo     - PhimRepo          - CinemaRepo         - OrderRepo        │  │
+│  │  - TicketRepo        - ChatRepo          - NotificationRepo                      │  │
+│  └──────────────────────────────────────────┬───────────────────────────────────────┘  │
+└─────────────────────────────────────────────┼──────────────────────────────────────────┘
+                                              │ JDBC
+                                              ▼
+                               ┌─────────────────────────────┐
+                               │     MySQL Server (3306)     │
+                               │  Database: movie_tickets_ltm│
+                               └─────────────────────────────┘
 ```
 
-1. Người dùng thao tác trên giao diện Swing. `MovieClient` gửi một yêu cầu UTF-8 qua TCP.
-2. `BasicServer` giữ phiên đăng nhập riêng cho từng kết nối, kiểm tra quyền và chuyển yêu cầu đến lớp `service`.
-3. Lớp `service` kiểm tra quy tắc nghiệp vụ; lớp `repository` thực hiện truy vấn MySQL.
-4. Server trả kết quả về Client; giao diện cập nhật phim, suất chiếu, ghế hoặc vé.
+1. **Giao thức mạng TCP**:
+   - Mỗi thông điệp gửi đi có định dạng: `COMMAND;PARAM_1;PARAM_2;...` kết thúc bằng ký tự xuống dòng `\n`.
+   - Các tham số chuỗi đều được mã hóa bằng **Base64 URL-safe** (`protocol.Protocol`) để không bị lỗi ký tự tiếng Việt, dấu phân cách hay ký tự xuống dòng.
+   - Phản hồi từ Server bắt đầu bằng dòng `OK;...` hoặc `ERR;...`, tiếp theo là các dòng dữ liệu và kết thúc bằng dòng `END`.
+   - Khi có thay đổi trạng thái ghế (`SEAT_CHANGED;<showId>`) hoặc tin nhắn mới (`CHAT_MESSAGE;<showId>;...`), Server chủ động phát sự kiện bất đồng bộ (Push Notification) tới các socket Client đang theo dõi.
+2. **Concurrency & Giữ ghế an toàn**:
+   - Sử dụng Transaction với ràng buộc `UNIQUE KEY` trên database, kết hợp trạng thái `held` có gắn thời hạn `expires_at`. Khi 2 Client cùng chọn 1 ghế tại một thời điểm, chỉ đúng 1 giao dịch thành công. Luồng ngầm định kỳ quét và giải phóng các ghế quá hạn thanh toán.
+3. **HTTP Web Server xem vé**:
+   - Khởi tạo qua `com.sun.net.httpserver.HttpServer` chạy độc lập trên cổng HTTP (mặc định 8080).
+   - Tự động sinh link vé có chứa token bảo mật 64 ký tự hex. Khi quét bằng điện thoại, máy chủ trả về trang HTML/CSS responsive hiển thị thông tin rạp, phim, suất chiếu, ghế và mã QR.
 
-Giao thức dùng một dòng cho mỗi yêu cầu, các trường được ngăn bằng `;`; dữ liệu văn bản được mã hóa Base64 URL-safe trong `protocol.Protocol`. Phản hồi bắt đầu bằng `OK;...` hoặc `ERR;...` và kết thúc bằng dòng `END`. Server dùng một nhóm luồng để phục vụ nhiều Client. Khi hai người cùng đặt một ghế, giao dịch database và ràng buộc ghế còn hiệu lực chỉ cho phép một yêu cầu thành công.
+---
 
-## Yêu cầu trước khi chạy
+## Yêu cầu môi trường
 
-- JDK **11 trở lên** (`java -version` và `javac -version`).
-- MySQL Server đang chạy và một tài khoản MySQL có quyền tạo database/bảng khi khởi tạo.
-- Windows PowerShell nếu dùng các lệnh bên dưới. Repository đã có `lib/mysql-connector-j-9.7.0.jar`, không cần tải thêm JDBC driver.
-- QR dùng ZXing Core 3.5.4; JSON payOS dùng Gson 2.13.2. Các JAR và giấy phép đã có trong `lib/`.
-  Khi biên dịch cần thêm -cp 'lib/*' như lệnh bên dưới.
+- **Java Development Kit (JDK)**: Phiên bản **11** trở lên (Khuyến nghị JDK 17 hoặc JDK 21).
+- **Cơ sở dữ liệu**: **MySQL Server 8.0** trở lên.
+- **Hệ điều hành**: Windows 10/11 (khuyên dùng PowerShell) hoặc Linux / macOS.
+- **Thư viện bên thứ ba** (đã tích hợp sẵn trong thư mục `lib/`):
+  - `mysql-connector-j-9.7.0.jar`: Driver kết nối MySQL JDBC.
+  - `zxing-core-3.5.4.jar`: Thư viện sinh và giải mã ảnh mã vạch QR Code.
+  - `gson-2.13.2.jar`: Thư viện xử lý dữ liệu JSON (dùng cho tích hợp PayOS).
 
-Các lệnh sau được chạy **tại thư mục gốc dự án** (nơi có `database/`, `web/`, `server/` và `README.md`).
+---
 
-## Cài đặt và khởi động
+## Hướng dẫn cài đặt và khởi chạy
 
-### 1. Lấy mã nguồn
+### 1. Khởi tạo Cơ sở dữ liệu
 
-Nếu chưa có dự án trên máy:
+Mở MySQL Workbench (hoặc terminal MySQL) và thực thi file script tạo database:
 
-```powershell
-git clone https://github.com/HoangKien17/LTM_Movie_Tickets.git
-cd LTM_Movie_Tickets
+```sql
+-- Chạy toàn bộ file database/schema.sql
 ```
 
-Nếu đã clone trước đó, cập nhật mã bằng `git pull` trong thư mục dự án.
-
-### 2. Tạo database
-
-Mở MySQL Workbench, kết nối MySQL, mở file `database/schema.sql` và chạy toàn bộ script. Script tạo database `movie_tickets_ltm`, các bảng và dữ liệu mẫu gồm phim, phòng, ghế và một suất chiếu vào ngày hôm sau.
-
-Hoặc, nếu lệnh `mysql` đã có trong `PATH`, chạy tại PowerShell ở thư mục gốc:
+Hoặc chạy nhanh bằng lệnh qua PowerShell/Command Prompt:
 
 ```powershell
 mysql -u root -p -e "source database/schema.sql"
 ```
 
-MySQL sẽ hỏi mật khẩu ở Terminal. Cú pháp `source` được [MySQL hỗ trợ khi chạy script ở chế độ batch](https://dev.mysql.com/doc/refman/9.1/en/batch-mode.html).
+---
 
-> `schema.sql` dùng `CREATE TABLE IF NOT EXISTS`: chạy lại script **không tự nâng cấp cấu trúc bảng cũ**. Nếu bạn đang dùng database của phiên bản dự án trước, hãy sao lưu dữ liệu và kiểm tra schema trước khi cập nhật.
+### 2. Cấu hình file `.env`
 
-### Nâng cấp database đang dùng
-
-Dừng Server, mở database/migrate_v2.sql trong MySQL Workbench và chạy toàn bộ.
-Script bổ sung token QR, thời điểm/người soát vé và quyền staff, giữ nguyên dữ liệu.
-Có thể chạy lại migration. Database mới tạo bằng schema.sql đã có cấu trúc này.
-
-Sau đó chạy `database/migrate_v3_payment_food.sql`. Migration V3 thêm sản phẩm, chi tiết đồ ăn,
-giao dịch thanh toán và trạng thái giữ ghế. Có thể chạy lại script. Người cài mới chỉ cần chạy
-`database/schema.sql` vì schema mới đã chứa cả V2 và V3.
-
-Hướng dẫn đầy đủ, danh sách file và kiểm thử: [HUONG_DAN_V2.md](HUONG_DAN_V2.md).
-
-### 3. Cấu hình kết nối MySQL cho Server
-
-Tạo file `.env` tại thư mục gốc dự án:
+Tạo một file `.env` tại **thư mục gốc** của dự án (bạn có thể sao chép từ file mẫu `env.example`):
 
 ```dotenv
+# Cấu hình kết nối MySQL
 MOVIE_DB_URL=jdbc:mysql://127.0.0.1:3306/movie_tickets_ltm
 MOVIE_DB_USER=root
 MOVIE_DB_PASSWORD=mat_khau_mysql_cua_ban
+
+# Cổng dịch vụ
+MOVIE_SERVER_PORT=2040
+MOVIE_HTTP_PORT=8080
+
+# Chế độ thanh toán: "demo" (giả lập) hoặc "payos" (chuyển khoản thật)
 PAYMENT_MODE=demo
+
+# Cấu hình xem vé từ xa bằng 4G/5G qua Ngrok / Cloudflare Tunnel (tùy chọn)
+# Nếu để trống, Server sẽ tự động lấy địa chỉ IP LAN Wi-Fi nội bộ
+PUBLIC_TICKET_URL=
+
+# Cấu hình gửi Email OTP khôi phục mật khẩu (Gmail SMTP) (tùy chọn)
+MOVIE_SMTP_HOST=smtp.gmail.com
+MOVIE_SMTP_USER=email-cua-ban@gmail.com
+MOVIE_SMTP_APP_PASSWORD=mat_khau_ung_dung_16_ky_tu
 ```
 
-Thay tên đăng nhập và mật khẩu bằng thông tin MySQL trên máy chạy Server. `.env` đã được đưa vào `.gitignore`, vì vậy không commit file chứa mật khẩu. Các biến môi trường `MOVIE_DB_URL`, `MOVIE_DB_USER`, `MOVIE_DB_PASSWORD` trong phiên chạy Server được ưu tiên hơn giá trị trong `.env`. Nếu sửa `.env`, hãy khởi động lại Server.
+---
 
-Để nhận tiền thật, tạo và liên kết kênh thanh toán tại payOS rồi đổi phần thanh toán trong `.env`:
+### 3. Biên dịch mã nguồn
+
+Mở PowerShell tại thư mục gốc của dự án và chạy các lệnh sau:
+
+```powershell
+# Tạo thư mục chứa file class biên dịch
+New-Item -ItemType Directory -Path out -Force | Out-Null
+
+# Quét tất cả file mã nguồn .java
+$javaFiles = (Get-ChildItem -Recurse -File -Filter '*.java' | Where-Object { $_.FullName -notmatch '\\(out|bin|target)\\' }).FullName
+
+# Biên dịch với thư viện trong lib/
+javac -encoding UTF-8 --release 11 -cp "lib/*;." -d out $javaFiles
+```
+
+---
+
+### 4. Khởi động Server
+
+Chạy lệnh sau trên **Terminal thứ nhất**:
+
+```powershell
+java -cp "out;lib/*" server.BasicServer
+```
+
+Khi Server khởi động thành công, bạn sẽ thấy thông báo:
+```text
+[HTTP] Web xem vé đã khởi động tại cổng 8080
+[TCP] Galaxy Cinema Server đã sẵn sàng tại cổng 2040
+```
+
+---
+
+### 5. Khởi động Client
+
+Mở **Terminal thứ hai** tại thư mục dự án và chạy:
+
+```powershell
+java -cp "out;lib/*" web.BasicClientUI
+```
+
+Giao diện đăng nhập sẽ xuất hiện. Bạn có thể mở đồng thời nhiều Client để trải nghiệm tính năng đồng bộ ghế và chat trực tiếp.
+
+---
+
+### 6. Cấp quyền Quản trị viên (Admin) và Nhân viên (Staff)
+
+Mọi tài khoản mới đăng ký qua màn hình Client đều có quyền mặc định là `user`. Để cấp quyền quản trị viên hoặc nhân viên soát vé, chạy câu lệnh sau trong MySQL:
+
+```sql
+USE movie_tickets_ltm;
+
+-- Cấp quyền Quản trị viên (Admin)
+UPDATE nguoi_dung SET vai_tro = 'admin' WHERE gmail = 'email-admin@example.com';
+
+-- Cấp quyền Nhân viên soát vé (Staff)
+UPDATE nguoi_dung SET vai_tro = 'staff' WHERE gmail = 'email-staff@example.com';
+```
+
+Sau khi chạy lệnh, hãy **đăng xuất và đăng nhập lại** trên Client để nhận giao diện tương ứng:
+- Tài khoản `staff`: Sẽ xuất hiện nút **Soát vé**.
+- Tài khoản `admin`: Sẽ xuất hiện các nút **Soát vé**, **Quản trị**, **Giám sát server**.
+
+---
+
+## Kết nối Client trong mạng LAN
+
+Để chạy Client trên máy tính khác trong cùng mạng Wi-Fi/LAN với máy chủ Server:
+
+1. Trên máy chạy Server: Tra cứu địa chỉ IP mạng nội bộ (ví dụ: `192.168.1.15`). Đảm bảo tường lửa (Windows Firewall) đã cho phép cổng TCP `2040` và cổng HTTP `8080`.
+2. Trên máy Client: Mở PowerShell tại thư mục dự án và cấu hình biến môi trường trước khi chạy:
+
+```powershell
+$env:MOVIE_SERVER_HOST = '192.168.1.15'
+$env:MOVIE_SERVER_PORT = '2040'
+java -cp "out;lib/*" web.BasicClientUI
+```
+
+---
+
+## Thanh toán trực tuyến (Demo & PayOS)
+
+### 1. Chế độ Demo (`PAYMENT_MODE=demo`)
+- Dành cho môi trường phát triển/thực hành môn học mà không cần tài khoản ngân hàng.
+- Màn hình thanh toán sẽ xuất hiện đồng hồ đếm ngược 10 phút, mã QR mô phỏng và nút **"Giả lập đã thanh toán"**.
+- Khi bấm nút, Client gửi yêu cầu `DEMO_CONFIRM_PAYMENT` tới Server để xác nhận giao dịch thành công.
+
+### 2. Chế độ PayOS (`PAYMENT_MODE=payos`)
+- Nhận tiền thanh toán thật chuyển về tài khoản ngân hàng của bạn thông qua cổng thanh toán **payOS**.
+- Đăng ký tài khoản tại [payOS](https://payos.vn), tạo kênh thanh toán và cập nhật vào file `.env`:
 
 ```dotenv
 PAYMENT_MODE=payos
-PAYOS_CLIENT_ID=client_id_cua_kenh_thanh_toan
-PAYOS_API_KEY=api_key_cua_kenh_thanh_toan
-PAYOS_CHECKSUM_KEY=checksum_key_cua_kenh_thanh_toan
+PAYOS_CLIENT_ID=client_id_cua_ban
+PAYOS_API_KEY=api_key_cua_ban
+PAYOS_CHECKSUM_KEY=checksum_key_cua_ban
 PAYOS_RETURN_URL=https://payos.vn
 PAYOS_CANCEL_URL=https://payos.vn
 ```
 
-Tiền được chuyển vào tài khoản ngân hàng liên kết với kênh payOS; không ghi số tài khoản vào mã nguồn.
-Ba khóa trên chỉ đặt ở máy Server và không commit `.env`. Xem [HUONG_DAN_V3.md](HUONG_DAN_V3.md).
+- Khách hàng quét mã VietQR tự động sinh bằng bất kỳ app Mobile Banking nào (MBBank, Vietcombank, Techcombank, MoMo...). Server sẽ tự động kiểm tra trạng thái thanh toán và phát hành vé ngay lập tức.
 
-### 4. Biên dịch
+---
 
-```powershell
-$javaFiles = (Get-ChildItem -Recurse -File -Filter '*.java' | Where-Object { $_.FullName -notmatch '\\(out|bin|target)\\' }).FullName
-New-Item -ItemType Directory -Path out -Force | Out-Null
-javac -encoding UTF-8 --release 11 -cp 'lib/*' -d out $javaFiles
-```
+## Quét QR xem vé trên Điện thoại di động
 
-Chỉ tiếp tục khi lệnh `javac` không báo lỗi. Sau mỗi lần sửa file `.java`, hãy biên dịch lại và khởi động lại chương trình.
+Vé điện tử có chứa một mã QR Code thông minh. Khách hàng có thể dùng ứng dụng **Camera điện thoại** hoặc **Zalo** để quét mã QR:
 
-### 5. Chạy Server và Client
+1. **Qua mạng Wi-Fi nội bộ**:
+   - Nếu máy điện thoại kết nối cùng Wi-Fi với máy tính chạy Server, Server sẽ tự động sinh mã QR chứa link nội bộ dạng: `http://192.168.x.x:8080/ticket?token=...`
+2. **Qua mạng 4G/5G từ xa (Sử dụng Ngrok)**:
+   - Cài đặt [Ngrok](https://ngrok.com) và mở cổng 8080: `ngrok http 8080`
+   - Sao chép đường dẫn công khai (ví dụ: `https://abc-xyz.ngrok-free.app`) và cấu hình vào `.env`:
+     ```dotenv
+     PUBLIC_TICKET_URL=https://abc-xyz.ngrok-free.app
+     ```
+   - Khởi động lại Server. Mã QR của mọi vé xuất ra sau đó sẽ tự động trỏ tới link công khai này, cho phép bất kỳ điện thoại nào bật 4G/5G đều xem được vé trực tuyến.
 
-Trong **Terminal thứ nhất**, tại thư mục gốc dự án:
+---
 
-```powershell
-java -cp 'out;lib/*' server.BasicServer
-```
+## Khôi phục mật khẩu qua Email (Gmail SMTP)
 
-Khi thấy `Galaxy Cinema Server đã sẵn sàng tại cổng 2040`, mở **Terminal thứ hai** cũng tại thư mục gốc và chạy:
+Ứng dụng hỗ trợ tính năng gửi mã xác thực OTP khôi phục mật khẩu qua giao thức Gmail SMTP:
 
-```powershell
-java -cp 'out;lib/*' web.BasicClientUI
-```
+1. Đăng nhập tài khoản Google của bạn, bật **Xác minh 2 bước** và tạo một **Mật khẩu ứng dụng (App Password)** gồm 16 ký tự.
+2. Thêm vào file `.env` trên máy Server:
+   ```dotenv
+   MOVIE_SMTP_HOST=smtp.gmail.com
+   MOVIE_SMTP_USER=email-cua-ban@gmail.com
+   MOVIE_SMTP_APP_PASSWORD=xxxx xxxx xxxx xxxx
+   ```
+3. Tại màn hình Đăng nhập của Client, bấm **Quên mật khẩu?**, nhập email đã đăng ký và nhấn nhận mã OTP. Server sẽ gửi email chứa mã OTP gồm 6 chữ số có hiệu lực trong 10 phút.
 
-Giữ Terminal Server mở trong lúc dùng ứng dụng. Dừng Server bằng `Ctrl+C`. Nếu bạn chỉ thay ảnh tĩnh trong `assets/`, hãy đóng rồi mở lại Client; không cần biên dịch Java.
+---
 
-### 6. Tạo tài khoản quản trị
-
-Người đăng ký qua giao diện mặc định có quyền `user`. Để cấp quyền quản trị cho một tài khoản của nhóm, đăng ký tài khoản đó trước, rồi chạy SQL sau trong MySQL Workbench (thay email thật của tài khoản):
-
-```sql
-USE movie_tickets_ltm;
-UPDATE nguoi_dung
-SET vai_tro = 'admin'
-WHERE gmail = 'email-cua-ban@example.com';
-```
-
-Đăng xuất rồi đăng nhập lại để Server nhận vai trò `admin` trong phiên mới. Các thao tác quản trị đều được Server kiểm tra quyền.
-
-## Chạy Client trên máy khác trong mạng LAN
-
-Chạy MySQL và Server trên máy chủ. Trên máy Client, mở PowerShell tại thư mục dự án và đặt địa chỉ IP của máy chạy Server trước khi khởi động giao diện:
-
-```powershell
-$env:MOVIE_SERVER_HOST = '192.168.1.10'
-$env:MOVIE_SERVER_PORT = '2040'
-java -cp 'out;lib/*' web.BasicClientUI
-```
-
-Đổi `192.168.1.10` thành IP thật của máy Server và bảo đảm cổng TCP `2040` cho phép kết nối trong mạng. Mặc định Client kết nối `127.0.0.1:2040`. Chỉ Server cần kết nối MySQL; Client vẫn truy cập dữ liệu thông qua Server.
-
-## Kịch bản trình diễn nhanh
-
-1. Khởi động Server và mở hai Client; đăng nhập bằng hai tài khoản khác nhau.
-2. Chọn ghế, thêm bắp/nước và tạo thanh toán. Client khác thấy ghế chuyển sang đang giữ ngay lập tức.
-3. Ở chế độ demo bấm **Giả lập đã thanh toán**; ở chế độ payOS quét QR bằng ứng dụng ngân hàng. Khi Server xác nhận giao dịch, vé QR xuất hiện và mọi Client được cập nhật.
-4. Khách dùng **điện thoại (Camera / Zalo)** quét mã QR trên vé để mở giao diện vé điện tử di động cực đẹp (hỗ trợ cả Wi-Fi nội bộ lẫn 4G/5G qua Ngrok).
-5. Đăng nhập tài khoản admin/staff để soát vé bằng cách nhập mã hoặc đọc ảnh QR, xác nhận khách vào rạp.
-6. Xem danh sách đơn, thống kê và báo cáo doanh thu theo phim trong màn hình quản trị.
-
-## Ảnh giao diện và poster phim
-
-- `assets/galaxy-cyber-hero-v1.png` là cảnh nền đăng nhập và ảnh dự phòng khi phim chưa có poster. `AuthBackdrop` dùng thêm các ảnh mẫu `img/conan.jpeg`, `img/doraemon.jpeg`, `img/dragonball.jpeg`; thiếu ảnh vẫn có nền dự phòng. Chạy Client từ thư mục gốc dự án. Banner và thẻ phim dùng poster thật do Server gửi qua TCP.
-- `img/` là nơi Server lưu poster do admin tải lên. Admin chọn ảnh JPG/PNG tối đa **2 MB**; Server tạo ảnh JPEG kích thước **244 × 340**, lưu tên file trong MySQL rồi gửi nội dung ảnh cho Client qua TCP.
-- Nếu đặt biến môi trường `MOVIE_POSTER_DIR` cho Server, poster mới sẽ được lưu ở thư mục đó thay cho `img/`. Ảnh từ đường dẫn cũ trong thư mục người dùng vẫn được hỗ trợ đọc.
-- Ảnh vừa tải lên `img/` nằm trên **máy chạy Server**. Muốn đưa ảnh đó lên GitHub để chia sẻ cho nhóm, cần `git add`, commit và push; lưu vào thư mục không tự đồng bộ lên GitHub.
-
-## Kiểm thử luồng đặt vé
-
-`tests.Step7SmokeTest` chạy qua **TCP Server thật** và kiểm tra đăng nhập, phân quyền, đọc phim/suất/ghế, hai Client cùng giữ một ghế, thanh toán demo, xem/hủy đơn và đăng xuất. Trước khi chạy, cần:
-
-- Server đang chạy và kết nối được MySQL.
-- Hai tài khoản **khác nhau**, cùng có vai trò `user`.
-- Ít nhất một suất chiếu trong tương lai còn ghế trống.
-- Server chạy với `PAYMENT_MODE=demo`.
-
-Trong Terminal PowerShell mới, đặt bốn biến môi trường cho hai tài khoản rồi chạy:
-
-```powershell
-$env:MOVIE_TEST_USER_1 = 'email-nguoi-dung-1@example.com'
-$env:MOVIE_TEST_PASSWORD_1 = Read-Host 'Mật khẩu người dùng 1'
-$env:MOVIE_TEST_USER_2 = 'email-nguoi-dung-2@example.com'
-$env:MOVIE_TEST_PASSWORD_2 = Read-Host 'Mật khẩu người dùng 2'
-java -cp 'out;lib/*' tests.Step7SmokeTest
-```
-
-Test **tạo một đơn thật rồi hủy đơn đó**, nên chạy với database thử nghiệm. Bản ghi đơn đã hủy vẫn là lịch sử trong database.
-
-## Cấu trúc thư mục
+## Cấu trúc thư mục dự án
 
 ```text
-assets/       Ảnh tĩnh dùng cho giao diện Galaxy Cinema
-database/     Script tạo database và dữ liệu mẫu
-img/          Poster phim trên máy Server và các ảnh mẫu
-lib/          MySQL Connector/J
-model/        Các đối tượng dữ liệu
-mysql/        Cấu hình kết nối JDBC của Server
-protocol/     Mã hóa tham số của giao thức TCP
-repository/   Truy vấn và giao dịch MySQL
-server/       TCP Server và xử lý lệnh
-service/      Quy tắc nghiệp vụ, xử lý poster
-tests/        Kiểm thử qua TCP Server
-utils/        Hàm hỗ trợ, gồm xử lý mật khẩu
-web/          Giao diện Java Swing và TCP Client (không phải website)
-.env          Cấu hình MySQL riêng trên máy, không đưa lên Git
-out/          File .class sinh ra khi biên dịch, không đưa lên Git
+LTM-Movie-Tickets/
+├── assets/                  # Ảnh nền giao diện và tài nguyên đồ họa tĩnh
+├── database/                # Mã nguồn cơ sở dữ liệu (schema.sql)
+├── img/                     # Thư mục lưu trữ poster phim (do Server quản lý)
+├── lib/                     # Thư viện ngoài: MySQL Driver, ZXing QR, Gson
+├── config/                  # Quản lý đọc cấu hình hệ thống từ .env và biến môi trường
+│   └── AppConfig.java
+├── model/                   # Lớp đối tượng thực thể (NguoiDung, Phim)
+├── mysql/                   # Kết nối JDBC cơ sở dữ liệu
+│   └── CSDL.java
+├── payment/                 # Tích hợp cổng thanh toán (PaymentProvider, PayOS, Demo)
+├── protocol/                # Giao thức TCP, mã hóa Base64 và định dạng mã vé QR
+├── repository/              # Tầng DAO / SQL query trực tiếp MySQL
+├── server/                  # Tầng máy chủ: TCP Socket Server, HTTP Ticket Server, Monitor
+├── service/                 # Tầng nghiệp vụ: Đặt vé, Giữ ghế, Mailer, Chat, Quản trị
+├── utils/                   # Tiện ích băm mật khẩu (BCrypt), xử lý sinh ảnh QR Code
+├── web/                     # Giao diện người dùng Java Swing (Client)
+├── tests/                   # Kịch bản kiểm thử tự động (Unit, UI, Realtime, Smoke tests)
+├── .env                     # File cấu hình biến môi trường cục bộ (không commit)
+├── env.example              # File mẫu cấu hình .env
+├── README.md                # Tài liệu hướng dẫn sử dụng dự án
+└── out/                     # Thư mục chứa bytecode Java sau khi biên dịch
 ```
 
-## Khi gặp lỗi
+---
 
-- **`Access denied for user ...`**: kiểm tra tài khoản/mật khẩu trong `.env`, biến môi trường `MOVIE_DB_*` và quyền của tài khoản MySQL. Chạy Server từ thư mục gốc rồi khởi động lại.
-- **Server báo MySQL chưa sẵn sàng**: kiểm tra dịch vụ MySQL, URL/cổng database và việc đã chạy `database/schema.sql`.
-- **`Address already in use` hoặc không mở được cổng 2040**: dừng phiên Server cũ bằng `Ctrl+C` trước khi chạy lại.
-- **Client không kết nối được Server**: chạy Server trước; kiểm tra `MOVIE_SERVER_HOST`, `MOVIE_SERVER_PORT` và tường lửa nếu kết nối qua LAN.
-- **Không thấy ảnh nền khi đăng nhập**: kiểm tra `assets/galaxy-cyber-hero-v1.png`, chạy Client từ thư mục gốc và mở lại Client. Ảnh cuộn phim vàng cũ không còn được giao diện mới sử dụng.
-- **`ClassNotFoundException` hoặc vẫn thấy giao diện cũ**: biên dịch lại toàn bộ mã vào `out/`, đóng Client cũ rồi chạy lại bằng lệnh ở trên.
+## Kiểm thử tự động (Testing)
 
+Dự án cung cấp bộ kịch bản kiểm thử đa dạng trong thư mục `tests/`:
 
-
-## Tài khoản nhân viên và soát vé
-
-Đăng ký một tài khoản qua giao diện, sau đó admin database cấp vai trò:
-
-~~~sql
-USE movie_tickets_ltm;
-UPDATE nguoi_dung SET vai_tro='staff' WHERE gmail='email-nhan-vien@example.com';
-~~~
-
-Đăng xuất và đăng nhập lại. Staff có trang Soát vé; admin có Soát vé và Giám sát server.
-Nhân viên không có quyền đọc danh sách người dùng, quản trị phim/phòng hoặc xem giám sát.
-
-## Kiểm thử tính năng mới
-
-~~~powershell
-java -cp 'out;lib/*' tests.FeatureUnitTest
-java -cp 'out;lib/*' tests.RealtimeTransportTest
-java -cp 'out;lib/*' tests.RealtimeUiTest
-~~~
-
-tests.FeatureSmokeTest chạy qua server thật, tự tạo tài khoản/phim/phòng/đơn để kiểm tra
-QR và hai máy soát đồng thời. Chỉ chạy trên MySQL thử nghiệm riêng và đặt
-MOVIE_TEST_ISOLATED=1, MOVIE_DB_URL, MOVIE_DB_USER, MOVIE_DB_PASSWORD,
-MOVIE_SERVER_HOST, MOVIE_SERVER_PORT đúng môi trường đó. Xem HUONG_DAN_V2.md.
-
-Server đọc MOVIE_SERVER_PORT, mặc định 2040. Cổng của client phải khớp.
-Nhật ký giám sát giữ tối đa 500 dòng trong RAM, xóa khi khởi động lại server;
-trạng thái soát vé lưu bền vững trong MySQL.
-## Giao diện neon cập nhật
-
-- Đăng nhập/đăng ký có tab chuyển màn hình, nền điện ảnh và panel kính tối. Ghi nhớ chỉ lưu email/số điện thoại, không lưu mật khẩu hay tự đăng nhập.
-- Trang chủ có bảng chọn ngày, phòng và giờ chiếu bên phải. Lựa chọn đi theo mã suất chiếu thật từ Server.
-- Ghế có viền cyan, ghế đang chọn màu xanh có dấu kiểm; bảng đơn, bắp nước và tổng tiền đặt bên phải. Tối đa 10 ghế mỗi đơn.
-- Thanh toán QR có thời gian giữ ghế; vé điện tử có đường xé, mã QR đọc được, tải toàn bộ vé PNG và in vé. QR vé chỉ chứa token xác thực.
-- Nút Soát vé, Quản trị và Giám sát server xuất hiện theo quyền của tài khoản.
-- Chưa có dữ liệu ghế VIP/điểm đánh giá. Thanh toán thẻ và ví trực tiếp chưa hỗ trợ; giao diện giữ các tùy chọn này ở trạng thái vô hiệu hóa.
-
-Kiểm thử giao diện không cần MySQL (biên dịch trước):
-
+### 1. Kiểm thử Logic & Tiện ích (Không cần kết nối MySQL)
 ```powershell
-java -cp 'out;lib/*' tests.FeatureUnitTest
-java -cp 'out;lib/*' web.UiRedesignTest
-java -cp 'out;lib/*' tests.RealtimeUiTest
-java -cp 'out;lib/*' web.NeonUiTest
+# Kiểm thử chữ ký số bảo mật của PayOS HMAC-SHA256
+java -cp "out;lib/*" tests.PayOsSignatureTest
+
+# Kiểm thử giao vận thời gian thực qua TCP Socket giả lập
+java -cp "out;lib/*" tests.RealtimeTransportTest
 ```
 
-Hai kiểm thử cuối mở TCP giả lập trên localhost. `web.NeonUiTest` xuất ảnh trong `../neon-ui-qa/` bằng dữ liệu kiểm thử, không đặt vé hay thanh toán thật.
+### 2. Kiểm thử Giao diện & Hiển thị (Headless UI)
+```powershell
+# Kiểm thử giao diện đồng bộ ghế thời gian thực giữa các client
+java -cp "out;lib/*" tests.RealtimeUiTest
+
+# Kiểm thử luồng giao diện chat phòng chiếu
+java -cp "out;lib/*" tests.ChatUiTest
+
+# Kiểm thử chụp ảnh màn hình giao diện Neon (kết quả lưu vào ../neon-ui-qa/)
+java -cp "out;lib/*" web.NeonUiTest
+```
+
+### 3. Kiểm thử Tích hợp toàn diện (Yêu cầu MySQL thử nghiệm riêng)
+Các bài test tích hợp sẽ tự động tạo dữ liệu cô lập để kiểm tra luồng mua vé và thanh toán:
+```powershell
+$env:MOVIE_TEST_ISOLATED = "1"
+
+# Kiểm thử luồng đặt bắp nước, giữ ghế, thanh toán demo và xuất vé
+java -cp "out;lib/*" tests.PaymentFoodSmokeTest
+
+# Kiểm thử luồng phân quyền tài khoản, đổi thông tin, soát vé và hủy đơn
+java -cp "out;lib/*" tests.FeatureSmokeTest
+
+# Kiểm thử tính năng gửi/nhận tin nhắn phòng chat qua TCP Server thật
+java -cp "out;lib/*" tests.ChatFeatureTest
+```
+
+---
+
+## Xử lý sự cố thường gặp (Troubleshooting)
+
+1. **Lỗi `Access denied for user 'root'@'localhost'`**:
+   - Kiểm tra lại mật khẩu MySQL trong file `.env` tại dòng `MOVIE_DB_PASSWORD`.
+   - Đảm bảo MySQL Server đang chạy (`net start MySQL80` hoặc kiểm tra trên Services của Windows).
+2. **Lỗi `Address already in use: bind` (Cổng 2040 hoặc 8080 bị chiếm dụng)**:
+   - Phiên bản Server cũ vẫn đang chạy ngầm. Mở Task Manager tìm tắt tiến trình `java.exe`, hoặc đổi sang cổng khác trong `.env` (`MOVIE_SERVER_PORT=2041`).
+3. **Client không thể kết nối tới Server (`Connection refused`)**:
+   - Hãy chắc chắn rằng bạn đã khởi động Server trước khi mở Client.
+   - Nếu kết nối qua LAN, kiểm tra tường lửa của máy chủ Server xem đã mở cổng 2040 chưa.
+4. **Không thấy ảnh nền hiển thị khi mở ứng dụng**:
+   - Hãy chắc chắn bạn chạy lệnh Java từ **thư mục gốc của dự án**, nơi có thư mục `assets/`.
+5. **Gặp lỗi `ClassNotFoundException`**:
+   - Hãy thực hiện biên dịch lại toàn bộ dự án vào thư mục `out/` theo hướng dẫn tại Mục 3 trước khi khởi chạy.
